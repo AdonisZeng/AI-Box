@@ -45,42 +45,42 @@ export class LMStudioProvider extends BaseProvider {
 
       const decoder = new TextDecoder()
       let fullContent = ''
-      let fullReasoning = ''
+      let done = false
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      while (!done) {
+        const result = await reader.read()
+        done = result.done
 
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
+        if (!done && result.value) {
+          const chunk = decoder.decode(result.value, { stream: true })
+          const lines = chunk.split('\n')
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') {
-              onChunk({ content: '', done: true })
-            } else {
-              try {
-                const parsed = JSON.parse(data)
-                const delta = parsed.choices?.[0]?.delta
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6)
+              if (data === '[DONE]') {
+                onChunk({ content: '', done: true })
+              } else {
+                try {
+                  const parsed = JSON.parse(data)
+                  const delta = parsed.choices?.[0]?.delta
 
-                if (!delta) continue
+                  if (!delta) continue
 
-                // Check for reasoning_content (LMStudio reasoning separation feature)
-                const reasoningContent = delta.reasoning_content
-                const content = delta.content || ''
+                  const reasoningContent = delta.reasoning_content
+                  const content = delta.content || ''
 
-                if (reasoningContent) {
-                  fullReasoning += reasoningContent
-                  onChunk({ content: '', reasoning_content: reasoningContent, done: false })
+                  if (reasoningContent) {
+                    onChunk({ content: '', reasoning_content: reasoningContent, done: false })
+                  }
+
+                  if (content) {
+                    fullContent += content
+                    onChunk({ content, reasoning_content: '', done: false })
+                  }
+                } catch {
+                  // Ignore parse errors
                 }
-
-                if (content) {
-                  fullContent += content
-                  onChunk({ content, reasoning_content: '', done: false })
-                }
-              } catch {
-                // Ignore parse errors
               }
             }
           }

@@ -13,6 +13,7 @@ interface ChatState {
   updateMessage: (sessionId: string, messageId: string, content: string) => void
   appendToMessage: (sessionId: string, messageId: string, content: string) => void
   updateThinking: (sessionId: string, messageId: string, thinking: string) => void
+  setThinkingExpanded: (sessionId: string, messageId: string, expanded: boolean) => void
   toggleThinkingExpanded: (sessionId: string, messageId: string) => void
   setGenerating: (generating: boolean) => void
   clearMessages: (sessionId: string) => void
@@ -111,6 +112,22 @@ export const useChatStore = create<ChatState>((set) => ({
               ...s,
               messages: s.messages.map((m) =>
                 m.id === messageId ? { ...m, thinking } : m
+              ),
+              updatedAt: Date.now(),
+            }
+          : s
+      ),
+    }))
+  },
+
+  setThinkingExpanded: (sessionId: string, messageId: string, expanded: boolean) => {
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              messages: s.messages.map((m) =>
+                m.id === messageId ? { ...m, thinkingExpanded: expanded } : m
               ),
               updatedAt: Date.now(),
             }

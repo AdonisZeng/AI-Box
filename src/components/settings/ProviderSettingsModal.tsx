@@ -42,7 +42,7 @@ export function ProviderSettingsModal({ providerId, onClose }: ProviderSettingsM
     if (providerId === 'lmstudio' && baseURL) {
       setLoadingModels(true)
       LMStudioProvider.fetchModels(baseURL)
-        .then(( fetchedModels) => {
+        .then((fetchedModels) => {
           setModels(fetchedModels)
           if (fetchedModels.length > 0 && !model) {
             setModel(fetchedModels[0].id)
@@ -50,7 +50,7 @@ export function ProviderSettingsModal({ providerId, onClose }: ProviderSettingsM
         })
         .finally(() => setLoadingModels(false))
     }
-  }, [providerId, baseURL])
+  }, [providerId, baseURL, model])
 
   const handleSave = () => {
     updateProvider(providerId, {

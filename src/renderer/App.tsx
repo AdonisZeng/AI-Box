@@ -5,10 +5,60 @@ import { useModuleStore, useSettingsStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { getEnabledModules, getModuleById } from '@/modules'
 
+function useLocalStorageSync(_storeKey: string) {
+  const [storageVersion, setStorageVersion] = useState(0)
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setStorageVersion((v) => v + 1)
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [])
+
+  return storageVersion
+}
+
+function useRefreshModuleStore() {
+  const { setModuleEnabled } = useModuleStore()
+  const moduleStates = useModuleStore((state) => state.moduleStates)
+  const storageVersion = useLocalStorageSync('ai-box-modules')
+
+  const refreshModuleStates = useMemo(() => {
+    return (_currentVersion: number) => {
+      try {
+        const stored = localStorage.getItem('ai-box-modules')
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (parsed.state?.moduleStates) {
+            Object.entries(parsed.state.moduleStates).forEach(([key, value]) => {
+              setModuleEnabled(key, value as boolean)
+            })
+          }
+        }
+      } catch (error) {
+        console.error('Failed to refresh module states:', error)
+      }
+    }
+  }, [setModuleEnabled])
+
+  useEffect(() => {
+    if (storageVersion > 0) {
+      refreshModuleStates(storageVersion)
+    }
+  }, [storageVersion, refreshModuleStates])
+
+  return moduleStates
+}
+
 function App() {
   const { theme, setTheme } = useSettingsStore()
-  const { moduleStates } = useModuleStore()
-  const enabledModules = useMemo(() => getEnabledModules(moduleStates), [moduleStates])
+  const moduleStates = useRefreshModuleStore()
+  const enabledModules = useMemo(
+    () => getEnabledModules(moduleStates),
+    [moduleStates]
+  )
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null)
 
   const toggleTheme = () => {

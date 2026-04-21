@@ -51,29 +51,32 @@ export class AnthropicProvider extends BaseProvider {
 
       const decoder = new TextDecoder()
       let fullContent = ''
+      let done = false
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      while (!done) {
+        const result = await reader.read()
+        done = result.done
 
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
+        if (!done && result.value) {
+          const chunk = decoder.decode(result.value, { stream: true })
+          const lines = chunk.split('\n')
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') {
-              onChunk({ content: '', done: true })
-            } else {
-              try {
-                const parsed = JSON.parse(data)
-                if (parsed.type === 'content_block_delta') {
-                  const content = parsed.delta?.text || ''
-                  fullContent += content
-                  onChunk({ content, done: false })
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6)
+              if (data === '[DONE]') {
+                onChunk({ content: '', done: true })
+              } else {
+                try {
+                  const parsed = JSON.parse(data)
+                  if (parsed.type === 'content_block_delta') {
+                    const content = parsed.delta?.text || ''
+                    fullContent += content
+                    onChunk({ content, done: false })
+                  }
+                } catch {
+                  // Ignore parse errors for incomplete chunks
                 }
-              } catch {
-                // Ignore parse errors for incomplete chunks
               }
             }
           }

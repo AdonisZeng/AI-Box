@@ -7,7 +7,49 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn, parseThinking } from '@/lib/utils'
 import { useChatStore } from '@/lib/store'
 import { useSettingsStore } from '@/lib/store'
-import { createProvider, getProviderValidationError, type Message } from '@/lib/providers'
+import { createProvider, getProviderValidationError, type Message, type ProviderType } from '@/lib/providers'
+
+function useLocalStorageSync(_storeKey: string) {
+  const [storageVersion, setStorageVersion] = useState(0)
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setStorageVersion((v) => v + 1)
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [])
+
+  return storageVersion
+}
+
+function useRefreshSettings() {
+  const { updateProvider, setActiveProvider } = useSettingsStore()
+  const storageVersion = useLocalStorageSync('ai-box-settings')
+
+  useEffect(() => {
+    if (storageVersion === 0) return
+
+    try {
+      const stored = localStorage.getItem('ai-box-settings')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed.state?.providers) {
+          parsed.state.providers.forEach((provider: { id: string; [key: string]: unknown }) => {
+            const { id, ...updates } = provider
+            updateProvider(id as ProviderType, updates)
+          })
+        }
+        if (parsed.state?.activeProvider) {
+          setActiveProvider(parsed.state.activeProvider as ProviderType)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh settings:', error)
+    }
+  }, [storageVersion, updateProvider, setActiveProvider])
+}
 
 const GREETING_MESSAGE = '你好！我是 AI Box 助手。有什么我可以帮助你的吗？'
 const GENERATION_STOPPED_MESSAGE = '已停止生成。'
@@ -21,6 +63,8 @@ function isAbortError(error: unknown): boolean {
 }
 
 export function ChatWorkspace() {
+  useRefreshSettings()
+
   const {
     sessions,
     activeSessionId,
@@ -31,6 +75,7 @@ export function ChatWorkspace() {
     addMessage,
     updateMessage,
     updateThinking,
+    setThinkingExpanded,
     toggleThinkingExpanded,
     setGenerating,
   } = useChatStore()
@@ -38,6 +83,7 @@ export function ChatWorkspace() {
   const { activeProvider, providers, getProviderConfig } = useSettingsStore()
 
   const [input, setInput] = useState('')
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const initRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -67,7 +113,7 @@ export function ChatWorkspace() {
       initRef.current = true
       createSession(activeProvider)
     }
-  }, [])
+  }, [createSession, activeProvider, sessions.length])
 
   useEffect(() => {
     return () => {
@@ -141,6 +187,7 @@ export function ChatWorkspace() {
     let fullContent = ''
     let fullThinking = ''
     let hasReasoningContent = false
+    let hasThinking = false
 
     try {
       // Filter out the initial greeting message from conversation history
@@ -163,8 +210,10 @@ export function ChatWorkspace() {
             // Handle reasoning_content from LMStudio reasoning separation
             if (chunk.reasoning_content) {
               hasReasoningContent = true
+              hasThinking = true
               fullThinking += chunk.reasoning_content
               updateThinking(activeSession.id, assistantMessageId, fullThinking)
+              setThinkingExpanded(activeSession.id, assistantMessageId, true)
             }
 
             // Handle regular content
@@ -177,8 +226,10 @@ export function ChatWorkspace() {
             if (!hasReasoningContent && chunk.content) {
               const { thinking, response } = parseThinking(fullContent)
               if (thinking !== null) {
+                hasThinking = true
                 updateThinking(activeSession.id, assistantMessageId, thinking)
                 updateMessage(activeSession.id, assistantMessageId, response)
+                setThinkingExpanded(activeSession.id, assistantMessageId, true)
               }
             }
           }
@@ -189,6 +240,7 @@ export function ChatWorkspace() {
       if (!abortController.signal.aborted && requestIdRef.current === requestId && !hasReasoningContent) {
         const { thinking, response } = parseThinking(fullContent)
         if (thinking !== null) {
+          hasThinking = true
           updateThinking(activeSession.id, assistantMessageId, thinking)
           updateMessage(activeSession.id, assistantMessageId, response)
         }
@@ -214,6 +266,9 @@ export function ChatWorkspace() {
 
       if (requestIdRef.current === requestId) {
         setGenerating(false)
+        if (hasThinking) {
+          setThinkingExpanded(activeSession.id, assistantMessageId, false)
+        }
       }
     }
   }
@@ -224,6 +279,28 @@ export function ChatWorkspace() {
       handleSend()
     }
   }
+
+  const testConnection = useCallback(async () => {
+    if (!providerConfig || !providerConfig.baseURL) {
+      setConnectionStatus('unknown')
+      return
+    }
+
+    setConnectionStatus('unknown')
+    try {
+      const response = await fetch(`${providerConfig.baseURL}/models`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000),
+      })
+      setConnectionStatus(response.ok ? 'connected' : 'disconnected')
+    } catch {
+      setConnectionStatus('disconnected')
+    }
+  }, [providerConfig])
+
+  useEffect(() => {
+    testConnection()
+  }, [testConnection])
 
   const stopGeneration = () => {
     abortControllerRef.current?.abort()
@@ -296,6 +373,22 @@ export function ChatWorkspace() {
               {providerConfig?.model || '未设置'}
             </span>
           </span>
+          <div className="w-px h-3 bg-[#334155]" />
+          <div className="flex items-center gap-1.5">
+            <div
+              className={cn(
+                'w-2 h-2 rounded-full',
+                connectionStatus === 'connected' && 'bg-green-500 shadow-sm shadow-green-500/50',
+                connectionStatus === 'disconnected' && 'bg-red-500 shadow-sm shadow-red-500/50',
+                connectionStatus === 'unknown' && 'bg-gray-500'
+              )}
+            />
+            <span className="text-xs text-[#64748b]">
+              {connectionStatus === 'connected' && '已连接'}
+              {connectionStatus === 'disconnected' && '未连接'}
+              {connectionStatus === 'unknown' && '检测中'}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -411,7 +504,7 @@ export function ChatWorkspace() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      code({ className, children, ref, ...props }) {
+                      code({ className, children, ...props }) {
                         const match = /language-(\w+)/.exec(className || '')
                         const isInline = !match && !className
                         return !isInline ? (

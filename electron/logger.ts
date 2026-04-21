@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, appendFileSync, writeFileSync } from 'fs'
 
