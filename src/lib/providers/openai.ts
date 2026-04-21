@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import type { Message, StreamChunk } from '@/types/providers'
+import type { ChatOptions, Message } from '@/types/providers'
 import { BaseProvider } from './base'
 
 export class OpenAIProvider extends BaseProvider {
@@ -14,14 +14,17 @@ export class OpenAIProvider extends BaseProvider {
     })
   }
 
-  async chat(messages: Message[], onChunk?: (chunk: StreamChunk) => void): Promise<string> {
+  async chat(messages: Message[], options?: ChatOptions): Promise<string> {
     const model = this.model || this.getDefaultModel()
+    const onChunk = options?.onChunk
 
     if (onChunk) {
       const stream = await this.client.chat.completions.create({
         model,
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
         stream: true,
+      }, {
+        signal: options?.signal,
       })
 
       let fullContent = ''
@@ -40,6 +43,8 @@ export class OpenAIProvider extends BaseProvider {
       const response = await this.client.chat.completions.create({
         model,
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      }, {
+        signal: options?.signal,
       })
       return response.choices[0]?.message?.content || ''
     }

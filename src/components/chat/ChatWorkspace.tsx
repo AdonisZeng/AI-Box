@@ -7,9 +7,18 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn, parseThinking } from '@/lib/utils'
 import { useChatStore } from '@/lib/store'
 import { useSettingsStore } from '@/lib/store'
-import { createProvider, type Message } from '@/lib/providers'
+import { createProvider, getProviderValidationError, type Message } from '@/lib/providers'
 
 const GREETING_MESSAGE = '你好！我是 AI Box 助手。有什么我可以帮助你的吗？'
+const GENERATION_STOPPED_MESSAGE = '已停止生成。'
+
+function createMessageId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
+}
 
 export function ChatWorkspace() {
   const {
@@ -28,18 +37,20 @@ export function ChatWorkspace() {
 
   const { activeProvider, providers, getProviderConfig } = useSettingsStore()
 
-  const providerConfig = useMemo(
-    () => providers.find((p) => p.id === activeProvider),
-    [providers, activeProvider]
-  )
-
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const initRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const requestIdRef = useRef(0)
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
+  )
+  const sessionProviderId = activeSession?.provider ?? activeProvider
+  const providerConfig = useMemo(
+    () => providers.find((p) => p.id === sessionProviderId),
+    [providers, sessionProviderId]
   )
 
   const scrollToBottom = useCallback(() => {
@@ -58,33 +69,68 @@ export function ChatWorkspace() {
     }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+    }
+  }, [])
+
+  const appendAssistantMessage = useCallback(
+    (sessionId: string, content: string) => {
+      addMessage(sessionId, {
+        id: createMessageId(),
+        role: 'assistant',
+        content,
+        timestamp: Date.now(),
+      })
+    },
+    [addMessage]
+  )
+
   const handleSend = async () => {
     if (!input.trim() || isGenerating || !activeSession) return
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input.trim(),
-      timestamp: Date.now(),
+    const currentProviderConfig = getProviderConfig(activeSession.provider)
+    if (!currentProviderConfig) {
+      appendAssistantMessage(
+        activeSession.id,
+        `错误: 当前会话绑定的 Provider "${activeSession.provider}" 不存在，请检查设置。`
+      )
+      return
     }
 
-    addMessage(activeSession.id, userMessage)
-    setInput('')
-    setGenerating(true)
-
-    const currentProviderConfig = getProviderConfig(activeProvider)
-    if (!currentProviderConfig) {
-      setGenerating(false)
+    const validationError = getProviderValidationError(currentProviderConfig)
+    if (validationError) {
+      appendAssistantMessage(activeSession.id, `错误: ${validationError}`)
       return
     }
 
     const provider = createProvider(currentProviderConfig)
     if (!provider) {
-      setGenerating(false)
+      appendAssistantMessage(
+        activeSession.id,
+        `错误: 无法创建 Provider "${currentProviderConfig.name}"，请检查配置。`
+      )
       return
     }
 
-    const assistantMessageId = (Date.now() + 1).toString()
+    const userMessage: Message = {
+      id: createMessageId(),
+      role: 'user',
+      content: input.trim(),
+      timestamp: Date.now(),
+    }
+
+    const requestId = requestIdRef.current + 1
+    requestIdRef.current = requestId
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
+    addMessage(activeSession.id, userMessage)
+    setInput('')
+    setGenerating(true)
+
+    const assistantMessageId = createMessageId()
     addMessage(activeSession.id, {
       id: assistantMessageId,
       role: 'assistant',
@@ -106,9 +152,13 @@ export function ChatWorkspace() {
           return true
         })
 
-      await provider.chat(
-        conversationMessages,
-        (chunk) => {
+      await provider.chat(conversationMessages, {
+        signal: abortController.signal,
+        onChunk: (chunk) => {
+          if (abortController.signal.aborted || requestIdRef.current !== requestId) {
+            return
+          }
+
           if (!chunk.done) {
             // Handle reasoning_content from LMStudio reasoning separation
             if (chunk.reasoning_content) {
@@ -132,11 +182,11 @@ export function ChatWorkspace() {
               }
             }
           }
-        }
-      )
+        },
+      })
 
       // Final update - ensure thinking is finalized for tag-based parsing
-      if (!hasReasoningContent) {
+      if (!abortController.signal.aborted && requestIdRef.current === requestId && !hasReasoningContent) {
         const { thinking, response } = parseThinking(fullContent)
         if (thinking !== null) {
           updateThinking(activeSession.id, assistantMessageId, thinking)
@@ -145,14 +195,27 @@ export function ChatWorkspace() {
       }
 
     } catch (error) {
+      if (abortController.signal.aborted || isAbortError(error)) {
+        if (!fullContent.trim()) {
+          updateMessage(activeSession.id, assistantMessageId, GENERATION_STOPPED_MESSAGE)
+        }
+        return
+      }
+
       updateMessage(
         activeSession.id,
         assistantMessageId,
         `错误: ${error instanceof Error ? error.message : '未知错误'}`
       )
-    }
+    } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null
+      }
 
-    setGenerating(false)
+      if (requestIdRef.current === requestId) {
+        setGenerating(false)
+      }
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -163,6 +226,8 @@ export function ChatWorkspace() {
   }
 
   const stopGeneration = () => {
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = null
     setGenerating(false)
   }
 
@@ -221,7 +286,7 @@ export function ChatWorkspace() {
           <span className="text-xs text-[#64748b]">
             Provider:
             <span className="text-[#4a9eff] font-medium ml-1">
-              {providerConfig?.name || activeProvider}
+              {providerConfig?.name || sessionProviderId}
             </span>
           </span>
           <div className="w-px h-3 bg-[#334155]" />

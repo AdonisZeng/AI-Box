@@ -1,4 +1,4 @@
-import type { Message, StreamChunk } from '@/types/providers'
+import type { ChatOptions, Message } from '@/types/providers'
 import { BaseProvider } from './base'
 
 export interface LMStudioModel {
@@ -13,9 +13,10 @@ export class LMStudioProvider extends BaseProvider {
     super(undefined, baseURL, model)
   }
 
-  async chat(messages: Message[], onChunk?: (chunk: StreamChunk) => void): Promise<string> {
+  async chat(messages: Message[], options?: ChatOptions): Promise<string> {
     const baseURL = this.baseURL || 'http://localhost:1234/v1'
     const model = this.model || 'local-model'
+    const onChunk = options?.onChunk
 
     const requestBody = {
       model,
@@ -32,6 +33,7 @@ export class LMStudioProvider extends BaseProvider {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
+        signal: options?.signal,
       })
 
       if (!response.ok) {
@@ -91,6 +93,7 @@ export class LMStudioProvider extends BaseProvider {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
+        signal: options?.signal,
       })
 
       if (!response.ok) {

@@ -1,21 +1,13 @@
 import { cn } from '@/lib/utils'
 import { rendererLogger } from '@/lib/logger'
-import { MessageSquare, Briefcase, Video, Music, Bot, Settings, Sparkles } from 'lucide-react'
-
-export type ModuleType = 'chat' | 'agent' | 'video' | 'audio' | 'mcp'
+import { Settings, Sparkles } from 'lucide-react'
+import type { AppModuleDefinition } from '@/modules'
 
 interface IconBarProps {
-  activeModule: ModuleType
-  onModuleChange: (module: ModuleType) => void
+  modules: AppModuleDefinition[]
+  activeModuleId: string | null
+  onModuleChange: (moduleId: string) => void
 }
-
-const modules: { id: ModuleType; icon: React.ReactNode; label: string }[] = [
-  { id: 'chat', icon: <MessageSquare size={20} />, label: '聊天' },
-  { id: 'agent', icon: <Briefcase size={20} />, label: 'Agent' },
-  { id: 'video', icon: <Video size={20} />, label: '视频' },
-  { id: 'audio', icon: <Music size={20} />, label: '音频' },
-  { id: 'mcp', icon: <Bot size={20} />, label: 'MCP' },
-]
 
 const iconButtonClass = (isActive: boolean) =>
   cn(
@@ -36,12 +28,34 @@ const iconButtonClass = (isActive: boolean) =>
         ]
   )
 
-export function IconBar({ activeModule, onModuleChange }: IconBarProps) {
+export function IconBar({ modules, activeModuleId, onModuleChange }: IconBarProps) {
   const handleOpenSettings = () => {
     rendererLogger.info('设置按钮被点击')
     rendererLogger.info('electronAPI 存在:', !!window.electronAPI)
     rendererLogger.info('openSettingsWindow 存在:', !!window.electronAPI?.openSettingsWindow)
     window.electronAPI?.openSettingsWindow()
+  }
+
+  const renderModuleButton = (module: AppModuleDefinition) => {
+    const Icon = module.icon
+    const isActive = activeModuleId === module.id
+
+    return (
+      <button
+        key={module.id}
+        onClick={() => onModuleChange(module.id)}
+        className={iconButtonClass(isActive)}
+        title={module.label}
+        aria-label={module.label}
+        aria-current={isActive ? 'page' : undefined}
+      >
+        {/* Left indicator for active state */}
+        {isActive && (
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#22C55E] rounded-r-full shadow-md shadow-[#22C55E]/50" />
+        )}
+        <Icon size={20} />
+      </button>
+    )
   }
 
   return (
@@ -56,24 +70,7 @@ export function IconBar({ activeModule, onModuleChange }: IconBarProps) {
       <div className="w-8 h-px bg-[#1E293B]" />
 
       {/* Module Icons */}
-      <div className="flex flex-col gap-2 mt-3">
-        {modules.map((module) => (
-          <button
-            key={module.id}
-            onClick={() => onModuleChange(module.id)}
-            className={iconButtonClass(activeModule === module.id)}
-            title={module.label}
-            aria-label={module.label}
-            aria-current={activeModule === module.id ? 'page' : undefined}
-          >
-            {/* Left indicator for active state */}
-            {activeModule === module.id && (
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#22C55E] rounded-r-full shadow-md shadow-[#22C55E]/50" />
-            )}
-            {module.icon}
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-col gap-2 mt-3">{modules.map(renderModuleButton)}</div>
 
       {/* Spacer */}
       <div className="flex-1" />

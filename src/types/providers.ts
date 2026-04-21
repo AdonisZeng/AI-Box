@@ -36,8 +36,13 @@ export interface StreamChunk {
   reasoning_content?: string
 }
 
+export interface ChatOptions {
+  onChunk?: (chunk: StreamChunk) => void
+  signal?: AbortSignal
+}
+
 export interface LLMProvider {
   name: string
-  chat(messages: Message[], onChunk?: (chunk: StreamChunk) => void): Promise<string>
+  chat(messages: Message[], options?: ChatOptions): Promise<string>
   getDefaultModel(): string
 }

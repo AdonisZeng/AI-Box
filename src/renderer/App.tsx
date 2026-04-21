@@ -1,43 +1,75 @@
-import { useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
-import { IconBar, ModuleType } from '@/components/layout/IconBar'
-import { ChatWorkspace } from '@/components/chat/ChatWorkspace'
-import { AgentWorkspace } from '@/components/workspace/AgentWorkspace'
-import { VideoWorkspace } from '@/components/workspace/VideoWorkspace'
-import { AudioWorkspace } from '@/components/workspace/AudioWorkspace'
-import { MCPWorkspace } from '@/components/mcp/MCPWorkspace'
-import { useSettingsStore } from '@/lib/store'
+import { IconBar } from '@/components/layout/IconBar'
+import { useModuleStore, useSettingsStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
+import { getEnabledModules, getModuleById } from '@/modules'
 
 function App() {
   const { theme, setTheme } = useSettingsStore()
-  const [activeModule, setActiveModule] = useState<ModuleType>('chat')
+  const { moduleStates } = useModuleStore()
+  const enabledModules = useMemo(() => getEnabledModules(moduleStates), [moduleStates])
+  const [activeModuleId, setActiveModuleId] = useState<string | null>(null)
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
-  const renderWorkspace = () => {
-    switch (activeModule) {
-      case 'chat':
-        return <ChatWorkspace />
-      case 'agent':
-        return <AgentWorkspace />
-      case 'video':
-        return <VideoWorkspace />
-      case 'audio':
-        return <AudioWorkspace />
-      case 'mcp':
-        return <MCPWorkspace />
-      default:
-        return <ChatWorkspace />
+  useEffect(() => {
+    if (enabledModules.length === 0) {
+      if (activeModuleId !== null) {
+        setActiveModuleId(null)
+      }
+      return
     }
+
+    const hasActiveModule = activeModuleId
+      ? enabledModules.some((module) => module.id === activeModuleId)
+      : false
+
+    if (!hasActiveModule) {
+      setActiveModuleId(enabledModules[0].id)
+    }
+  }, [activeModuleId, enabledModules])
+
+  const activeModule = activeModuleId ? getModuleById(activeModuleId) : undefined
+  const ActiveWorkspace = activeModule?.Workspace
+
+  const renderWorkspace = () => {
+    if (!ActiveWorkspace) {
+      return (
+        <div className="h-full flex items-center justify-center px-8">
+          <div className="max-w-md text-center">
+            <div className="text-[#F8FAFC] text-xl font-semibold mb-3">当前没有已启用模块</div>
+            <p className="text-[#64748b] text-sm leading-relaxed">
+              打开设置窗口，在“模块”页启用至少一个模块后，这里会自动装载对应工作区。
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <Suspense
+        fallback={
+          <div className="h-full flex items-center justify-center">
+            <div className="text-sm text-[#64748b]">正在装载模块...</div>
+          </div>
+        }
+      >
+        <ActiveWorkspace />
+      </Suspense>
+    )
   }
 
   return (
     <div className={theme}>
       <div className="h-screen flex bg-[#0F172A] text-foreground overflow-hidden">
-        <IconBar activeModule={activeModule} onModuleChange={setActiveModule} />
+        <IconBar
+          modules={enabledModules}
+          activeModuleId={activeModuleId}
+          onModuleChange={setActiveModuleId}
+        />
 
         <div className="flex-1 flex flex-col min-w-0">
           <div className="h-12 bg-[#0F172A]/80 border-b border-[#1E293B] flex items-center justify-between px-4">

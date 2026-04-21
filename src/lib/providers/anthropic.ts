@@ -1,4 +1,4 @@
-import type { Message, StreamChunk } from '@/types/providers'
+import type { ChatOptions, Message } from '@/types/providers'
 import { BaseProvider } from './base'
 
 export class AnthropicProvider extends BaseProvider {
@@ -8,10 +8,11 @@ export class AnthropicProvider extends BaseProvider {
     super(apiKey, baseURL, model)
   }
 
-  async chat(messages: Message[], onChunk?: (chunk: StreamChunk) => void): Promise<string> {
+  async chat(messages: Message[], options?: ChatOptions): Promise<string> {
     const model = this.model || this.getDefaultModel()
     const baseURL = this.baseURL || 'https://api.anthropic.com'
     const apiKey = this.apiKey || ''
+    const onChunk = options?.onChunk
 
     const systemMessage = messages.find((m) => m.role === 'system')
     const conversationMessages = messages.filter((m) => m.role !== 'system')
@@ -38,6 +39,7 @@ export class AnthropicProvider extends BaseProvider {
         method: 'POST',
         headers,
         body: JSON.stringify({ ...requestBody, stream: true }),
+        signal: options?.signal,
       })
 
       if (!response.ok) {
@@ -84,6 +86,7 @@ export class AnthropicProvider extends BaseProvider {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
+        signal: options?.signal,
       })
 
       if (!response.ok) {

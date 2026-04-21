@@ -1,4 +1,4 @@
-import type { Message, StreamChunk, LLMProvider } from '@/types/providers'
+import type { ChatOptions, Message, LLMProvider } from '@/types/providers'
 
 export abstract class BaseProvider implements LLMProvider {
   abstract name: string
@@ -9,7 +9,7 @@ export abstract class BaseProvider implements LLMProvider {
     protected model?: string
   ) {}
 
-  abstract chat(messages: Message[], onChunk?: (chunk: StreamChunk) => void): Promise<string>
+  abstract chat(messages: Message[], options?: ChatOptions): Promise<string>
 
   abstract getDefaultModel(): string
 

@@ -6,19 +6,44 @@ import { CustomProvider } from './custom'
 
 export type { ProviderType, ProviderConfig, Message, StreamChunk, LLMProvider }
 
-export function createProvider(config: ProviderConfig): LLMProvider | null {
+export function getProviderValidationError(config: ProviderConfig): string | null {
+  if (!config.enabled) {
+    return `${config.name} 当前已禁用，请先在设置中启用后再试。`
+  }
+
   switch (config.id) {
     case 'openai':
-      if (!config.apiKey) return null
-      return new OpenAIProvider(config.apiKey, config.baseURL, config.model)
+      return config.apiKey.trim()
+        ? null
+        : 'OpenAI 尚未配置 API Key，请先在设置中补充后再试。'
     case 'anthropic':
-      if (!config.apiKey) return null
-      return new AnthropicProvider(config.apiKey, config.baseURL, config.model)
+      return config.apiKey.trim()
+        ? null
+        : 'Anthropic 尚未配置 API Key，请先在设置中补充后再试。'
+    case 'custom':
+      return config.baseURL.trim()
+        ? null
+        : '自定义 Provider 尚未配置基地址，请先在设置中补充后再试。'
+    case 'lmstudio':
+    default:
+      return null
+  }
+}
+
+export function createProvider(config: ProviderConfig): LLMProvider | null {
+  if (getProviderValidationError(config)) {
+    return null
+  }
+
+  switch (config.id) {
+    case 'openai':
+      return new OpenAIProvider(config.apiKey.trim(), config.baseURL, config.model)
+    case 'anthropic':
+      return new AnthropicProvider(config.apiKey.trim(), config.baseURL, config.model)
     case 'lmstudio':
       return new LMStudioProvider(config.baseURL || 'http://localhost:1234/v1', config.model)
     case 'custom':
-      if (!config.baseURL) return null
-      return new CustomProvider(config.baseURL, config.apiKey, config.model)
+      return new CustomProvider(config.baseURL.trim(), config.apiType, config.apiKey.trim(), config.model)
     default:
       return null
   }

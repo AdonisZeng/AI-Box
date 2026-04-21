@@ -1,3 +1,4 @@
 export { useChatStore } from './chat'
+export { useModuleStore } from './modules'
 export { useSettingsStore } from './settings'
 export { useMCPStore } from './mcp'
