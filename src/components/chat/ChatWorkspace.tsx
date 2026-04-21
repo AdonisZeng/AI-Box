@@ -28,7 +28,12 @@ export function ChatWorkspace() {
     setGenerating,
   } = useChatStore()
 
-  const { activeProvider, getProviderConfig } = useSettingsStore()
+  const { activeProvider, providers, getProviderConfig } = useSettingsStore()
+
+  const providerConfig = useMemo(
+    () => providers.find((p) => p.id === activeProvider),
+    [providers, activeProvider]
+  )
 
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -69,13 +74,13 @@ export function ChatWorkspace() {
     setInput('')
     setGenerating(true)
 
-    const providerConfig = getProviderConfig(activeProvider)
-    if (!providerConfig) {
+    const currentProviderConfig = getProviderConfig(activeProvider)
+    if (!currentProviderConfig) {
       setGenerating(false)
       return
     }
 
-    const provider = createProvider(providerConfig)
+    const provider = createProvider(currentProviderConfig)
     if (!provider) {
       setGenerating(false)
       return
@@ -222,14 +227,14 @@ export function ChatWorkspace() {
           <span className="text-xs text-[#64748b]">
             Provider:
             <span className="text-[#4a9eff] font-medium ml-1">
-              {getProviderConfig(activeProvider)?.name || activeProvider}
+              {providerConfig?.name || activeProvider}
             </span>
           </span>
           <div className="w-px h-3 bg-[#334155]" />
           <span className="text-xs text-[#64748b]">
             Model:
             <span className="text-[#F8FAFC] font-medium ml-1">
-              {getProviderConfig(activeProvider)?.model || '未设置'}
+              {providerConfig?.model || '未设置'}
             </span>
           </span>
         </div>
