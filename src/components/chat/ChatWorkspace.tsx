@@ -264,7 +264,7 @@ export function ChatWorkspace() {
             <div className="max-w-[65%] flex flex-col gap-2">
               {/* Thinking Section */}
               {message.thinking !== undefined && message.thinking !== null && (
-                <div className="mb-3 ml-14">
+                <div className="mb-3">
                   <button
                     onClick={() => handleToggleThinking(message.id)}
                     className={cn(
@@ -302,8 +302,17 @@ export function ChatWorkspace() {
                     )}>
                       <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#334155]">
                         <div className="flex items-center gap-1.5 text-xs text-[#64748b]">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          <span>模型推理中...</span>
+                          {isGenerating && message.id === activeSession?.messages[activeSession.messages.length - 1]?.id ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              <span>模型推理中...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Brain className="w-3 h-3" />
+                              <span>思考完成</span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <pre className="whitespace-pre-wrap font-mono text-xs text-[#94a3b8] leading-relaxed">
