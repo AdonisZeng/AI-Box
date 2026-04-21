@@ -33,6 +33,7 @@ export interface ChatSession {
 export interface StreamChunk {
   content: string
   done: boolean
+  reasoning_content?: string
 }
 
 export interface LLMProvider {

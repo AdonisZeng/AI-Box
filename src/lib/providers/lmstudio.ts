@@ -6,10 +6,6 @@ export interface LMStudioModel {
   name: string
 }
 
-// Qwen3 thinking mode token IDs
-const THINKING_START_TOKEN = 151667
-const THINKING_END_TOKEN = 151668
-
 export class LMStudioProvider extends BaseProvider {
   name = 'LMStudio'
 
@@ -47,6 +43,7 @@ export class LMStudioProvider extends BaseProvider {
 
       const decoder = new TextDecoder()
       let fullContent = ''
+      let fullReasoning = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -63,25 +60,22 @@ export class LMStudioProvider extends BaseProvider {
             } else {
               try {
                 const parsed = JSON.parse(data)
+                const delta = parsed.choices?.[0]?.delta
 
-                // Check for Qwen3 thinking token IDs
-                const tokenId = parsed.token_id ?? parsed.choices?.[0]?.delta?.token_id
+                if (!delta) continue
 
-                if (tokenId === THINKING_START_TOKEN) {
-                  // Thinking block starts - emit special marker
-                  fullContent += '<thinking_start>'
-                  onChunk({ content: '<thinking_start>', done: false })
-                } else if (tokenId === THINKING_END_TOKEN) {
-                  // Thinking block ends - emit special marker
-                  fullContent += '<thinking_end>'
-                  onChunk({ content: '<thinking_end>', done: false })
-                } else {
-                  // Normal content token
-                  const content = parsed.choices?.[0]?.delta?.content || parsed.text || ''
-                  if (content) {
-                    fullContent += content
-                    onChunk({ content, done: false })
-                  }
+                // Check for reasoning_content (LMStudio reasoning separation feature)
+                const reasoningContent = delta.reasoning_content
+                const content = delta.content || ''
+
+                if (reasoningContent) {
+                  fullReasoning += reasoningContent
+                  onChunk({ content: '', reasoning_content: reasoningContent, done: false })
+                }
+
+                if (content) {
+                  fullContent += content
+                  onChunk({ content, reasoning_content: '', done: false })
                 }
               } catch {
                 // Ignore parse errors

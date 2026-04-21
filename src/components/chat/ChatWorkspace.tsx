@@ -11,8 +11,6 @@ import { createProvider, type Message } from '@/lib/providers'
 
 const GREETING_MESSAGE = '你好！我是 LanShan AI 助手。有什么我可以帮助你的吗？'
 
-const THINK_END_PATTERNS = ['</think>', '</thinking>', '[/thinking]', '\n</think>', '<thinking_end>']
-
 export function ChatWorkspace() {
   const {
     sessions,
@@ -95,8 +93,8 @@ export function ChatWorkspace() {
     })
 
     let fullContent = ''
-    let thinkingBuffer = ''
-    let inThinkingBlock = false
+    let fullThinking = ''
+    let hasReasoningContent = false
 
     try {
       // Filter out the initial greeting message from conversation history
@@ -112,42 +110,38 @@ export function ChatWorkspace() {
         conversationMessages,
         (chunk) => {
           if (!chunk.done) {
-            fullContent += chunk.content
-            thinkingBuffer += chunk.content
-
-            // Check for thinking block boundaries
-            const hasThinkStart = thinkingBuffer.includes('<think>') || thinkingBuffer.includes('<thinking_start>')
-            if (hasThinkStart) {
-              inThinkingBlock = true
+            // Handle reasoning_content from LMStudio reasoning separation
+            if (chunk.reasoning_content) {
+              hasReasoningContent = true
+              fullThinking += chunk.reasoning_content
+              updateThinking(activeSession.id, assistantMessageId, fullThinking)
             }
 
-            if (inThinkingBlock) {
-              // Extract thinking content - only update when we have a complete block
+            // Handle regular content
+            if (chunk.content) {
+              fullContent += chunk.content
+              updateMessage(activeSession.id, assistantMessageId, fullContent)
+            }
+
+            // Fallback: if no reasoning_content field, parse thinking tags from content
+            if (!hasReasoningContent && chunk.content) {
               const { thinking, response } = parseThinking(fullContent)
               if (thinking !== null) {
                 updateThinking(activeSession.id, assistantMessageId, thinking)
                 updateMessage(activeSession.id, assistantMessageId, response)
               }
-
-              // Check for thinking end markers after parsing
-              const thinkEndDetected = THINK_END_PATTERNS.some(pattern => fullContent.includes(pattern))
-              if (thinkEndDetected) {
-                inThinkingBlock = false
-                thinkingBuffer = ''
-              }
-            } else {
-              // No thinking block yet, just update content
-              updateMessage(activeSession.id, assistantMessageId, fullContent)
             }
           }
         }
       )
 
-      // Final update - ensure thinking is finalized
-      const { thinking, response } = parseThinking(fullContent)
-      if (thinking !== null) {
-        updateThinking(activeSession.id, assistantMessageId, thinking)
-        updateMessage(activeSession.id, assistantMessageId, response)
+      // Final update - ensure thinking is finalized for tag-based parsing
+      if (!hasReasoningContent) {
+        const { thinking, response } = parseThinking(fullContent)
+        if (thinking !== null) {
+          updateThinking(activeSession.id, assistantMessageId, thinking)
+          updateMessage(activeSession.id, assistantMessageId, response)
+        }
       }
 
     } catch (error) {
