@@ -45,7 +45,7 @@ export class MCPClient {
     }
   }
 
-  async disconnect(): void {
+  async disconnect(): Promise<void> {
     if (this.abortController) {
       this.abortController.abort()
       this.abortController = null
@@ -81,8 +81,7 @@ export class MCPClient {
       const data = await response.json()
       this.server.tools = data.result?.tools || []
       return this.server.tools
-    } catch (error) {
-      console.error('Error listing tools:', error)
+    } catch {
       return []
     }
   }

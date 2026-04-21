@@ -1,8 +1,12 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { logger } from './logger'
+
+let settingsWindow: BrowserWindow | null = null
 
 function createWindow(): void {
+  logger.info('创建主窗口')
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -11,7 +15,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/main.js'),
+      preload: join(__dirname, '../preload/preload.js'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
@@ -19,6 +23,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    logger.info('主窗口 ready-to-show')
     mainWindow.show()
   })
 
@@ -28,13 +33,75 @@ function createWindow(): void {
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    const url = process.env['ELECTRON_RENDERER_URL']
+    logger.info('主窗口加载开发URL', url)
+    mainWindow.loadURL(url)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    const filePath = join(__dirname, '../renderer/index.html')
+    logger.info('主窗口加载文件', filePath)
+    mainWindow.loadFile(filePath)
+  }
+}
+
+function createSettingsWindow(): void {
+  logger.info('createSettingsWindow 被调用')
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    logger.info('设置窗口已存在，聚焦')
+    settingsWindow.focus()
+    return
+  }
+
+  logger.info('开始创建设置窗口')
+  settingsWindow = new BrowserWindow({
+    width: 520,
+    height: 640,
+    minWidth: 400,
+    minHeight: 500,
+    show: false,
+    autoHideMenuBar: true,
+    parent: BrowserWindow.getAllWindows()[0] || undefined,
+    modal: false,
+    webPreferences: {
+      preload: join(__dirname, '../preload/preload.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  settingsWindow.on('ready-to-show', () => {
+    logger.info('设置窗口 ready-to-show')
+    settingsWindow?.show()
+  })
+
+  settingsWindow.on('closed', () => {
+    logger.info('设置窗口 closed')
+    settingsWindow = null
+  })
+
+  settingsWindow.webContents.on('did-finish-load', () => {
+    logger.info('设置窗口 did-finish-load')
+  })
+
+  settingsWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription) => {
+    logger.error('设置窗口 did-fail-load', { errorCode, errorDescription })
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    const rendererUrl = process.env['ELECTRON_RENDERER_URL']
+    const baseUrl = rendererUrl.endsWith('/') ? rendererUrl.slice(0, -1) : rendererUrl
+    const settingsUrl = `${baseUrl}/settings.html`
+    logger.info('设置窗口加载开发URL', settingsUrl)
+    settingsWindow.loadURL(settingsUrl)
+  } else {
+    const filePath = join(__dirname, '../renderer/settings.html')
+    logger.info('设置窗口加载文件', filePath)
+    settingsWindow.loadFile(filePath)
   }
 }
 
 app.whenReady().then(() => {
+  logger.info('app.whenReady')
   electronApp.setAppUserModelId('com.lanshan.app')
 
   app.on('browser-window-created', (_, window) => {
@@ -43,6 +110,21 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-app-version', () => {
     return app.getVersion()
+  })
+
+  ipcMain.handle('open-settings-window', () => {
+    logger.info('IPC open-settings-window 被调用')
+    createSettingsWindow()
+  })
+
+  ipcMain.handle('log-message', (_, level: string, message: string, ...args: unknown[]) => {
+    if (level === 'error') {
+      logger.error(message, ...args)
+    } else if (level === 'warn') {
+      logger.warn(message, ...args)
+    } else {
+      logger.info(message, ...args)
+    }
   })
 
   createWindow()

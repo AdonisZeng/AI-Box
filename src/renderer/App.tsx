@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import { IconBar, ModuleType } from '@/components/layout/IconBar'
-import { SettingsPanel } from '@/components/layout/SettingsPanel'
 import { ChatWorkspace } from '@/components/chat/ChatWorkspace'
 import { AgentWorkspace } from '@/components/workspace/AgentWorkspace'
 import { VideoWorkspace } from '@/components/workspace/VideoWorkspace'
@@ -11,9 +10,8 @@ import { useSettingsStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 
 function App() {
-  const { theme, setTheme, activeProvider, setActiveProvider } = useSettingsStore()
+  const { theme, setTheme } = useSettingsStore()
   const [activeModule, setActiveModule] = useState<ModuleType>('chat')
-  const [settingsCollapsed, setSettingsCollapsed] = useState(false)
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark')
@@ -31,8 +29,6 @@ function App() {
         return <AudioWorkspace />
       case 'mcp':
         return <MCPWorkspace />
-      case 'settings':
-        return <ChatWorkspace />
       default:
         return <ChatWorkspace />
     }
@@ -42,13 +38,6 @@ function App() {
     <div className={theme}>
       <div className="h-screen flex bg-[#0F172A] text-foreground overflow-hidden">
         <IconBar activeModule={activeModule} onModuleChange={setActiveModule} />
-
-        <SettingsPanel
-          collapsed={settingsCollapsed}
-          onToggle={() => setSettingsCollapsed(!settingsCollapsed)}
-          activeProvider={activeProvider}
-          onProviderChange={setActiveProvider}
-        />
 
         <div className="flex-1 flex flex-col min-w-0">
           <div className="h-12 bg-[#0F172A]/80 border-b border-[#1E293B] flex items-center justify-between px-4">

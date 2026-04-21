@@ -18,8 +18,6 @@ export function MCPWorkspace() {
       id: Date.now().toString(),
       name: newServerName.trim(),
       url: newServerUrl.trim(),
-      connected: false,
-      tools: [],
     })
 
     setNewServerName('')

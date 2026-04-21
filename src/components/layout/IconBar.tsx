@@ -1,7 +1,8 @@
 import { cn } from '@/lib/utils'
+import { rendererLogger } from '@/lib/logger'
 import { MessageSquare, Briefcase, Video, Music, Bot, Settings, Sparkles } from 'lucide-react'
 
-export type ModuleType = 'chat' | 'agent' | 'video' | 'audio' | 'mcp' | 'settings'
+export type ModuleType = 'chat' | 'agent' | 'video' | 'audio' | 'mcp'
 
 interface IconBarProps {
   activeModule: ModuleType
@@ -36,6 +37,13 @@ const iconButtonClass = (isActive: boolean) =>
   )
 
 export function IconBar({ activeModule, onModuleChange }: IconBarProps) {
+  const handleOpenSettings = () => {
+    rendererLogger.info('设置按钮被点击')
+    rendererLogger.info('electronAPI 存在:', !!window.electronAPI)
+    rendererLogger.info('openSettingsWindow 存在:', !!window.electronAPI?.openSettingsWindow)
+    window.electronAPI?.openSettingsWindow()
+  }
+
   return (
     <div className="w-16 h-full flex flex-col items-center py-4 gap-2 bg-[#0F172A]/50">
       {/* Logo */}
@@ -73,16 +81,11 @@ export function IconBar({ activeModule, onModuleChange }: IconBarProps) {
       {/* Settings */}
       <div className="pt-4 border-t border-[#1E293B]/50">
         <button
-          onClick={() => onModuleChange('settings')}
-          className={iconButtonClass(activeModule === 'settings')}
+          onClick={handleOpenSettings}
+          className={iconButtonClass(false)}
           title="设置"
           aria-label="设置"
-          aria-current={activeModule === 'settings' ? 'page' : undefined}
         >
-          {/* Left indicator for active state */}
-          {activeModule === 'settings' && (
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#22C55E] rounded-r-full shadow-md shadow-[#22C55E]/50" />
-          )}
           <Settings size={20} />
         </button>
       </div>

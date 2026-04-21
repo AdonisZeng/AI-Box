@@ -11,6 +11,8 @@ import { createProvider, type Message } from '@/lib/providers'
 
 const GREETING_MESSAGE = '你好！我是 LanShan AI 助手。有什么我可以帮助你的吗？'
 
+const THINK_END_PATTERNS = ['</think>', '</thinking>', '[/thinking]', '\n</think>', '<thinking_end>']
+
 export function ChatWorkspace() {
   const {
     sessions,
@@ -93,17 +95,13 @@ export function ChatWorkspace() {
 
     try {
       // Filter out the initial greeting message from conversation history
-      const conversationMessages = [...activeSession.messages, userMessage]
+      const conversationMessages: Message[] = [...activeSession.messages, userMessage]
         .filter((m) => {
           if (m === activeSession.messages[0] && m.role === 'assistant' && m.content === GREETING_MESSAGE) {
             return false
           }
           return true
         })
-        .map((m) => ({
-          role: m.role as 'user' | 'assistant' | 'system',
-          content: m.content,
-        }))
 
       await provider.chat(
         conversationMessages,
@@ -113,7 +111,8 @@ export function ChatWorkspace() {
             thinkingBuffer += chunk.content
 
             // Check for thinking block boundaries
-            if (thinkingBuffer.includes('<think>')) {
+            const hasThinkStart = thinkingBuffer.includes('<think>') || thinkingBuffer.includes('<thinking_start>')
+            if (hasThinkStart) {
               inThinkingBlock = true
             }
 
@@ -124,14 +123,16 @@ export function ChatWorkspace() {
                 updateThinking(activeSession.id, assistantMessageId, thinking)
                 updateMessage(activeSession.id, assistantMessageId, response)
               }
+
+              // Check for thinking end markers after parsing
+              const thinkEndDetected = THINK_END_PATTERNS.some(pattern => fullContent.includes(pattern))
+              if (thinkEndDetected) {
+                inThinkingBlock = false
+                thinkingBuffer = ''
+              }
             } else {
               // No thinking block yet, just update content
               updateMessage(activeSession.id, assistantMessageId, fullContent)
-            }
-
-            if (thinkingBuffer.includes('</think>')) {
-              inThinkingBlock = false
-              thinkingBuffer = ''
             }
           }
         }
@@ -145,7 +146,6 @@ export function ChatWorkspace() {
       }
 
     } catch (error) {
-      console.error('Chat error:', error)
       updateMessage(
         activeSession.id,
         assistantMessageId,
@@ -338,16 +338,15 @@ export function ChatWorkspace() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      code({ className, children, ...props }) {
+                      code({ className, children, ref, ...props }) {
                         const match = /language-(\w+)/.exec(className || '')
                         const isInline = !match && !className
                         return !isInline ? (
                           <SyntaxHighlighter
-                            style={oneDark}
+                            style={oneDark as Record<string, React.CSSProperties>}
                             language={match?.[1] || 'text'}
                             PreTag="div"
                             className="rounded mt-2 !bg-[#1e1e1e] !p-3 text-xs"
-                            {...props}
                           >
                             {String(children).replace(/\n$/, '')}
                           </SyntaxHighlighter>

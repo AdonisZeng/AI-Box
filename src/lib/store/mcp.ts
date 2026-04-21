@@ -68,8 +68,7 @@ export const useMCPStore = create<MCPState>((set, get) => ({
         ),
         isConnecting: false,
       }))
-    } catch (error) {
-      console.error('Failed to connect MCP server:', error)
+    } catch {
       set((state) => ({
         serverConfigs: state.serverConfigs.map((s) =>
           s.id === id ? { ...s, connected: false, tools: [] } : s

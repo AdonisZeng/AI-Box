@@ -18,7 +18,7 @@ interface ChatState {
   clearMessages: (sessionId: string) => void
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>((set) => ({
   sessions: [],
   activeSessionId: null,
   isGenerating: false,
