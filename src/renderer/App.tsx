@@ -43,9 +43,9 @@ function App() {
           <div className="h-12 bg-[#0F172A]/80 border-b border-[#1E293B] flex items-center justify-between px-4">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#22C55E] to-[#16a34a] flex items-center justify-center shadow-lg shadow-[#22C55E]/20">
-                <span className="text-white font-bold text-sm">LS</span>
+                <span className="text-white font-bold text-sm">AI</span>
               </div>
-              <span className="font-semibold text-[#F8FAFC] tracking-tight">LanShan</span>
+              <span className="font-semibold text-[#F8FAFC] tracking-tight">AI Box</span>
             </div>
             <button
               onClick={toggleTheme}

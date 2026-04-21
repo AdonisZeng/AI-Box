@@ -9,7 +9,7 @@ import { useChatStore } from '@/lib/store'
 import { useSettingsStore } from '@/lib/store'
 import { createProvider, type Message } from '@/lib/providers'
 
-const GREETING_MESSAGE = '你好！我是 LanShan AI 助手。有什么我可以帮助你的吗？'
+const GREETING_MESSAGE = '你好！我是 AI Box 助手。有什么我可以帮助你的吗？'
 
 export function ChatWorkspace() {
   const {

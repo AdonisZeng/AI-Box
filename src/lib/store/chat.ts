@@ -31,7 +31,7 @@ export const useChatStore = create<ChatState>((set) => ({
         {
           id: '1',
           role: 'assistant',
-          content: '你好！我是 LanShan AI 助手。有什么我可以帮助你的吗？',
+          content: '你好！我是 AI Box 助手。有什么我可以帮助你的吗？',
           timestamp: Date.now(),
         },
       ],

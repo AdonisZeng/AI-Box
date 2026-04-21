@@ -6,7 +6,7 @@
 
 ---
 
-**Project:** LanShan AI
+**Project:** AI Box
 **Generated:** 2026-04-20 14:02:51
 **Category:** Developer Tool / IDE
 

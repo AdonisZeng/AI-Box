@@ -80,7 +80,7 @@ export const useSettingsStore = create<SettingsState>()(
       },
     }),
     {
-      name: 'lanshan-settings',
+      name: 'ai-box-settings',
     }
   )
 )

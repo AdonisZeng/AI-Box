@@ -102,7 +102,7 @@ function createSettingsWindow(): void {
 
 app.whenReady().then(() => {
   logger.info('app.whenReady')
-  electronApp.setAppUserModelId('com.lanshan.app')
+  electronApp.setAppUserModelId('com.aibox.app')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

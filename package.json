@@ -1,5 +1,5 @@
 {
-  "name": "lanshan",
+  "name": "ai-box",
   "version": "1.0.0",
   "description": "AI-powered modular desktop tool with chat, agent, and media generation",
   "main": "./out/main/main.js",
@@ -50,8 +50,8 @@
     "vite": "^5.1.0"
   },
   "build": {
-    "appId": "com.lanshan.app",
-    "productName": "LanShan",
+    "appId": "com.aibox.app",
+    "productName": "AI Box",
     "directories": {
       "output": "release"
     },
