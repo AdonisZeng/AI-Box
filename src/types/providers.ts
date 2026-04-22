@@ -25,7 +25,6 @@ export interface ChatSession {
   id: string
   title: string
   messages: Message[]
-  provider: ProviderType
   createdAt: number
   updatedAt: number
 }

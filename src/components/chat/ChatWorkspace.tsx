@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn, parseThinking } from '@/lib/utils'
+import { resolveChatProviderId } from '@/lib/chat/provider-resolution'
 import { useChatStore } from '@/lib/store'
 import { useSettingsStore } from '@/lib/store'
 import { createProvider, getProviderValidationError, type Message, type ProviderType } from '@/lib/providers'
@@ -93,10 +94,10 @@ export function ChatWorkspace() {
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
   )
-  const sessionProviderId = activeSession?.provider ?? activeProvider
+  const chatProviderId = resolveChatProviderId(activeProvider)
   const providerConfig = useMemo(
-    () => providers.find((p) => p.id === sessionProviderId),
-    [providers, sessionProviderId]
+    () => providers.find((p) => p.id === chatProviderId),
+    [providers, chatProviderId]
   )
 
   const scrollToBottom = useCallback(() => {
@@ -111,9 +112,9 @@ export function ChatWorkspace() {
   useEffect(() => {
     if (!initRef.current && sessions.length === 0) {
       initRef.current = true
-      createSession(activeProvider)
+      createSession()
     }
-  }, [createSession, activeProvider, sessions.length])
+  }, [createSession, sessions.length])
 
   useEffect(() => {
     return () => {
@@ -136,11 +137,11 @@ export function ChatWorkspace() {
   const handleSend = async () => {
     if (!input.trim() || isGenerating || !activeSession) return
 
-    const currentProviderConfig = getProviderConfig(activeSession.provider)
+    const currentProviderConfig = getProviderConfig(chatProviderId)
     if (!currentProviderConfig) {
       appendAssistantMessage(
         activeSession.id,
-        `错误: 当前会话绑定的 Provider "${activeSession.provider}" 不存在，请检查设置。`
+        `错误: 当前激活的 Provider "${chatProviderId}" 不存在，请检查设置。`
       )
       return
     }
@@ -309,7 +310,7 @@ export function ChatWorkspace() {
   }
 
   const handleNewChat = () => {
-    createSession(activeProvider)
+    createSession()
   }
 
   const handleDeleteChat = (e: React.MouseEvent, sessionId: string) => {
@@ -363,7 +364,7 @@ export function ChatWorkspace() {
           <span className="text-xs text-[#64748b]">
             Provider:
             <span className="text-[#4a9eff] font-medium ml-1">
-              {providerConfig?.name || sessionProviderId}
+              {providerConfig?.name || chatProviderId}
             </span>
           </span>
           <div className="w-px h-3 bg-[#334155]" />

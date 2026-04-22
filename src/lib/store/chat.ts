@@ -1,12 +1,12 @@
 import { create } from 'zustand'
-import type { ChatSession, Message, ProviderType } from '@/types/providers'
+import type { ChatSession, Message } from '@/types/providers'
 
 interface ChatState {
   sessions: ChatSession[]
   activeSessionId: string | null
   isGenerating: boolean
 
-  createSession: (provider: ProviderType) => ChatSession
+  createSession: () => ChatSession
   deleteSession: (id: string) => void
   setActiveSession: (id: string) => void
   addMessage: (sessionId: string, message: Message) => void
@@ -24,7 +24,7 @@ export const useChatStore = create<ChatState>((set) => ({
   activeSessionId: null,
   isGenerating: false,
 
-  createSession: (provider: ProviderType) => {
+  createSession: () => {
     const session: ChatSession = {
       id: Date.now().toString(),
       title: '新对话',
@@ -36,7 +36,6 @@ export const useChatStore = create<ChatState>((set) => ({
           timestamp: Date.now(),
         },
       ],
-      provider,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
