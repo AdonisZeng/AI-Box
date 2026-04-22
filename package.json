@@ -7,13 +7,15 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build && electron-builder",
     "preview": "electron-vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "test": "node --test electron src"
   },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zustand": "^4.5.0",
     "openai": "^4.47.0",
+    "yaml": "^2.8.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0",
