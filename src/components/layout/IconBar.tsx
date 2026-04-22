@@ -21,9 +21,10 @@ const iconButtonClass = (isActive: boolean) =>
           'scale-105',
         ]
       : [
-          'bg-transparent text-[#64748b]',
-          'hover:text-[#94a3b8]',
-          'hover:bg-[#1E293B]',
+          'bg-transparent text-slate-500 hover:bg-slate-200 hover:text-slate-700',
+          'dark:text-[#64748b]',
+          'dark:hover:text-[#94a3b8]',
+          'dark:hover:bg-[#1E293B]',
           'hover:scale-105',
         ]
   )
@@ -59,7 +60,7 @@ export function IconBar({ modules, activeModuleId, onModuleChange }: IconBarProp
   }
 
   return (
-    <div className="w-16 h-full flex flex-col items-center py-4 gap-2 bg-[#0F172A]/50">
+    <div className="w-16 h-full flex flex-col items-center py-4 gap-2 border-r border-slate-200 bg-slate-100/80 transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#0F172A]/50">
       {/* Logo */}
       <div className="mb-4">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#22C55E] to-[#16a34a] flex items-center justify-center shadow-lg shadow-[#22C55E]/20">
@@ -67,7 +68,7 @@ export function IconBar({ modules, activeModuleId, onModuleChange }: IconBarProp
         </div>
       </div>
 
-      <div className="w-8 h-px bg-[#1E293B]" />
+      <div className="w-8 h-px bg-slate-300 dark:bg-[#1E293B]" />
 
       {/* Module Icons */}
       <div className="flex flex-col gap-2 mt-3">{modules.map(renderModuleButton)}</div>
@@ -76,7 +77,7 @@ export function IconBar({ modules, activeModuleId, onModuleChange }: IconBarProp
       <div className="flex-1" />
 
       {/* Settings */}
-      <div className="pt-4 border-t border-[#1E293B]/50">
+      <div className="pt-4 border-t border-slate-200 dark:border-[#1E293B]/50">
         <button
           onClick={handleOpenSettings}
           className={iconButtonClass(false)}

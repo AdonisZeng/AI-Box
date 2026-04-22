@@ -6,6 +6,11 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn, parseThinking } from '@/lib/utils'
 import { resolveChatProviderId } from '@/lib/chat/provider-resolution'
+import {
+  getThinkingBodyClass,
+  getThinkingPanelClass,
+  getThinkingWrapperClass,
+} from './thinking-panel-styles'
 import { useChatStore } from '@/lib/store'
 import { useSettingsStore } from '@/lib/store'
 import { createProvider, getProviderValidationError, type Message, type ProviderType } from '@/lib/providers'
@@ -327,7 +332,7 @@ export function ChatWorkspace() {
   return (
     <div className="flex flex-col h-full">
       {/* Tab Bar */}
-      <div className="h-10 bg-[#0F172A]/50 border-b border-[#1E293B] flex items-center px-2 gap-1 overflow-x-auto">
+      <div className="h-10 flex items-center px-2 gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50/70 transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#0F172A]/50">
         {sessions.slice(0, 8).map((session) => (
           <div
             key={session.id}
@@ -335,8 +340,8 @@ export function ChatWorkspace() {
             className={cn(
               'flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg cursor-pointer transition-all duration-200 group min-w-fit',
               activeSessionId === session.id
-                ? 'bg-[#1E293B] text-[#F8FAFC] shadow-md'
-                : 'text-[#64748b] hover:text-[#94a3b8] hover:bg-[#1E293B]/50'
+                ? 'bg-white text-slate-900 shadow-sm dark:bg-[#1E293B] dark:text-[#F8FAFC]'
+                : 'text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-[#64748b] dark:hover:text-[#94a3b8] dark:hover:bg-[#1E293B]/50'
             )}
           >
             <span className="max-w-[80px] truncate">{session.title}</span>
@@ -352,29 +357,29 @@ export function ChatWorkspace() {
         ))}
         <button
           onClick={handleNewChat}
-          className="flex items-center gap-1 px-2 py-1.5 text-[#64748b] text-xs rounded-lg hover:text-[#94a3b8] hover:bg-[#1E293B]/50 transition-all duration-200"
+          className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg transition-all duration-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-[#64748b] dark:hover:text-[#94a3b8] dark:hover:bg-[#1E293B]/50"
         >
           <Plus size={12} />
         </button>
       </div>
 
       {/* Provider & Model Badge */}
-      <div className="h-9 bg-[#1E293B]/50 border-b border-[#1E293B] flex items-center px-4 gap-3">
-        <div className="h-7 bg-[#1E293B] border border-[#334155] rounded-full px-4 flex items-center gap-3">
-          <span className="text-xs text-[#64748b]">
+      <div className="h-9 flex items-center px-4 gap-3 border-b border-slate-200 bg-white/70 transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#1E293B]/50">
+        <div className="h-7 rounded-full px-4 flex items-center gap-3 border border-slate-200 bg-white transition-colors duration-200 dark:bg-[#1E293B] dark:border-[#334155]">
+          <span className="text-xs text-slate-500 dark:text-[#64748b]">
             Provider:
             <span className="text-[#4a9eff] font-medium ml-1">
               {providerConfig?.name || chatProviderId}
             </span>
           </span>
-          <div className="w-px h-3 bg-[#334155]" />
-          <span className="text-xs text-[#64748b]">
+          <div className="w-px h-3 bg-slate-200 dark:bg-[#334155]" />
+          <span className="text-xs text-slate-500 dark:text-[#64748b]">
             Model:
-            <span className="text-[#F8FAFC] font-medium ml-1">
+            <span className="font-medium ml-1 text-slate-900 dark:text-[#F8FAFC]">
               {providerConfig?.model || '未设置'}
             </span>
           </span>
-          <div className="w-px h-3 bg-[#334155]" />
+          <div className="w-px h-3 bg-slate-200 dark:bg-[#334155]" />
           <div className="flex items-center gap-1.5">
             <div
               className={cn(
@@ -384,7 +389,7 @@ export function ChatWorkspace() {
                 connectionStatus === 'unknown' && 'bg-gray-500'
               )}
             />
-            <span className="text-xs text-[#64748b]">
+            <span className="text-xs text-slate-500 dark:text-[#64748b]">
               {connectionStatus === 'connected' && '已连接'}
               {connectionStatus === 'disconnected' && '未连接'}
               {connectionStatus === 'unknown' && '检测中'}
@@ -394,7 +399,7 @@ export function ChatWorkspace() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-100/70 transition-colors duration-200 dark:bg-transparent">
         {activeSession?.messages.map((message) => (
           <div
             key={message.id}
@@ -426,14 +431,15 @@ export function ChatWorkspace() {
                 <div className="mb-3">
                   <button
                     onClick={() => handleToggleThinking(message.id)}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
-                      'bg-[#1E293B] hover:bg-[#334155]',
-                      'text-[#64748b] hover:text-[#94a3b8]',
-                      'border border-[#334155] hover:border-[#475569]',
-                      'transition-all duration-200',
-                      'hover:scale-105 active:scale-95'
-                    )}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
+                    'border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700',
+                    'dark:bg-[#1E293B] dark:hover:bg-[#334155]',
+                    'dark:text-[#64748b] dark:hover:text-[#94a3b8]',
+                    'dark:border-[#334155] dark:hover:border-[#475569]',
+                    'transition-all duration-200',
+                    'hover:scale-105 active:scale-95'
+                  )}
                   >
                     <Brain className="w-3.5 h-3.5" />
                     <span>思考过程</span>
@@ -446,20 +452,10 @@ export function ChatWorkspace() {
                   </button>
 
                   <div
-                    className={cn(
-                      'overflow-hidden transition-all duration-300 ease-out',
-                      message.thinkingExpanded
-                        ? 'max-h-[500px] opacity-100 mt-3'
-                        : 'max-h-0 opacity-0 mt-0'
-                    )}
+                    className={getThinkingWrapperClass(!!message.thinkingExpanded)}
                   >
-                    <div className={cn(
-                      'rounded-xl p-4',
-                      'bg-[#1E293B]/80 backdrop-blur-sm',
-                      'border border-[#334155]',
-                      'shadow-lg'
-                    )}>
-                      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#334155]">
+                    <div className={getThinkingPanelClass()}>
+                      <div className="flex items-center gap-2 px-4 pt-4 mb-3 pb-2 border-b border-[#334155]">
                         <div className="flex items-center gap-1.5 text-xs text-[#64748b]">
                           {isGenerating && message.id === activeSession?.messages[activeSession.messages.length - 1]?.id ? (
                             <>
@@ -474,9 +470,11 @@ export function ChatWorkspace() {
                           )}
                         </div>
                       </div>
-                      <pre className="whitespace-pre-wrap font-mono text-xs text-[#94a3b8] leading-relaxed">
-                        {message.thinking}
-                      </pre>
+                      <div className={getThinkingBodyClass()}>
+                        <pre className="whitespace-pre-wrap font-mono text-xs text-[#94a3b8] leading-relaxed">
+                          {message.thinking}
+                        </pre>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -488,9 +486,10 @@ export function ChatWorkspace() {
                   'rounded-2xl px-5 py-3.5 text-sm leading-relaxed shadow-md transition-all duration-200',
                   message.role === 'assistant'
                     ? [
-                        'bg-[#1E293B]',
-                        'text-[#E2E8F0]',
-                        'rounded-tl-md border border-[#334155]',
+                        'rounded-tl-md border border-slate-200 bg-white text-slate-800',
+                        'dark:bg-[#1E293B]',
+                        'dark:text-[#E2E8F0]',
+                        'dark:border-[#334155]',
                         'hover:shadow-lg'
                       ]
                     : [
@@ -534,7 +533,7 @@ export function ChatWorkspace() {
                     {message.content}
                   </ReactMarkdown>
                 ) : isGenerating && message.role === 'assistant' ? (
-                  <span className="flex items-center gap-2 text-[#64748b]">
+                  <span className="flex items-center gap-2 text-slate-500 dark:text-[#64748b]">
                     <Loader2 size={14} className="animate-spin" />
                     <span>生成中...</span>
                   </span>
@@ -547,7 +546,7 @@ export function ChatWorkspace() {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-[#1E293B] bg-[#0F172A]/50 backdrop-blur-sm">
+      <div className="p-4 border-t border-slate-200 bg-white/85 backdrop-blur-sm transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#0F172A]/50">
         <div className="relative flex gap-3 items-end">
           <textarea
             value={input}
@@ -555,19 +554,20 @@ export function ChatWorkspace() {
             onKeyDown={handleKeyDown}
             placeholder="输入消息... (Shift+Enter 换行)"
             className={cn(
-              'w-full bg-[#1E293B] rounded-xl px-4 py-3.5 pr-12',
-              'text-sm text-[#E2E8F0] placeholder-[#64748b]',
-              'border-2 border-transparent',
+              'w-full rounded-xl px-4 py-3.5 pr-12 border-2',
+              'bg-white text-slate-900 placeholder:text-slate-400 border-slate-200',
+              'dark:bg-[#1E293B] dark:text-[#E2E8F0] dark:placeholder-[#64748b]',
+              'dark:border-transparent',
               'focus:outline-none',
               'transition-all duration-200 ease-out',
               'resize-none min-h-[48px] max-h-[120px]',
               'focus:border-[#4a9eff] focus:shadow-lg focus:shadow-[#4a9eff]/10',
-              'hover:border-[#334155]'
+              'hover:border-slate-300 dark:hover:border-[#334155]'
             )}
             rows={1}
           />
           {input.length > 0 && (
-            <div className="absolute bottom-2 right-16 text-xs text-[#475569]">
+            <div className="absolute bottom-2 right-16 text-xs text-slate-400 dark:text-[#475569]">
               {input.length}
             </div>
           )}

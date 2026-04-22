@@ -49,3 +49,6 @@ coverage
 
 # Misc
 .superpowers
+
+# Codex
+.codex/
