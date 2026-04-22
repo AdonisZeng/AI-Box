@@ -11,6 +11,13 @@ import {
   getThinkingPanelClass,
   getThinkingWrapperClass,
 } from './thinking-panel-styles'
+import {
+  getSessionTabClass,
+  getStageShellClass,
+  getStageStatusClusterClass,
+  getStageToolbarClass,
+  getStageWorkspaceBackdropClass,
+} from './stage-shell-styles'
 import { useChatStore } from '@/lib/store'
 import { useSettingsStore } from '@/lib/store'
 import { createProvider, getProviderValidationError, type Message, type ProviderType } from '@/lib/providers'
@@ -329,108 +336,110 @@ export function ChatWorkspace() {
     }
   }
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Tab Bar */}
-      <div className="h-10 flex items-center px-2 gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50/70 transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#0F172A]/50">
-        {sessions.slice(0, 8).map((session) => (
-          <div
-            key={session.id}
-            onClick={() => setActiveSession(session.id)}
-            className={cn(
-              'flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg cursor-pointer transition-all duration-200 group min-w-fit',
-              activeSessionId === session.id
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-[#1E293B] dark:text-[#F8FAFC]'
-                : 'text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-[#64748b] dark:hover:text-[#94a3b8] dark:hover:bg-[#1E293B]/50'
-            )}
-          >
-            <span className="max-w-[80px] truncate">{session.title}</span>
-            {sessions.length > 1 && (
-              <button
-                onClick={(e) => handleDeleteChat(e, session.id)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[#334155] transition-opacity"
-              >
-                <Trash2 size={10} />
-              </button>
-            )}
-          </div>
-        ))}
-        <button
-          onClick={handleNewChat}
-          className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg transition-all duration-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:text-[#64748b] dark:hover:text-[#94a3b8] dark:hover:bg-[#1E293B]/50"
-        >
-          <Plus size={12} />
-        </button>
-      </div>
+  const connectionLabel =
+    connectionStatus === 'connected'
+      ? '已连接'
+      : connectionStatus === 'disconnected'
+        ? '未连接'
+        : '检测中'
 
-      {/* Provider & Model Badge */}
-      <div className="h-9 flex items-center px-4 gap-3 border-b border-slate-200 bg-white/70 transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#1E293B]/50">
-        <div className="h-7 rounded-full px-4 flex items-center gap-3 border border-slate-200 bg-white transition-colors duration-200 dark:bg-[#1E293B] dark:border-[#334155]">
-          <span className="text-xs text-slate-500 dark:text-[#64748b]">
-            Provider:
-            <span className="text-[#4a9eff] font-medium ml-1">
-              {providerConfig?.name || chatProviderId}
+  const statusDotClassName =
+    connectionStatus === 'connected'
+      ? 'bg-green-500 shadow-sm shadow-green-500/50'
+      : connectionStatus === 'disconnected'
+        ? 'bg-red-500 shadow-sm shadow-red-500/50'
+        : 'bg-gray-500'
+
+  return (
+    <div className={getStageWorkspaceBackdropClass()}>
+      <div className={getStageShellClass()}>
+        <div className={getStageToolbarClass()}>
+          <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
+            {sessions.slice(0, 8).map((session) => (
+              <button
+                key={session.id}
+                onClick={() => setActiveSession(session.id)}
+                className={cn(
+                  getSessionTabClass(activeSessionId === session.id),
+                  'group min-w-fit cursor-pointer'
+                )}
+              >
+                <span className="max-w-[88px] truncate">{session.title}</span>
+                {sessions.length > 1 && (
+                  <span
+                    onClick={(e) => handleDeleteChat(e, session.id)}
+                    className="rounded-full p-0.5 opacity-0 transition-opacity hover:bg-slate-200/80 group-hover:opacity-100 dark:hover:bg-slate-700/60"
+                  >
+                    <Trash2 size={10} />
+                  </span>
+                )}
+              </button>
+            ))}
+            <button
+              onClick={handleNewChat}
+              className={cn(getSessionTabClass(false), 'min-w-fit')}
+              aria-label="新建对话"
+            >
+              <Plus size={12} />
+            </button>
+          </div>
+
+          <div className={getStageStatusClusterClass()}>
+            <span>
+              Provider:
+              <span className="ml-1 font-medium text-[#4a9eff]">
+                {providerConfig?.name || chatProviderId}
+              </span>
             </span>
-          </span>
-          <div className="w-px h-3 bg-slate-200 dark:bg-[#334155]" />
-          <span className="text-xs text-slate-500 dark:text-[#64748b]">
-            Model:
-            <span className="font-medium ml-1 text-slate-900 dark:text-[#F8FAFC]">
-              {providerConfig?.model || '未设置'}
+            <div className="h-3 w-px bg-slate-200 dark:bg-slate-700" />
+            <span>
+              Model:
+              <span className="ml-1 font-medium text-slate-900 dark:text-slate-50">
+                {providerConfig?.model || '未设置'}
+              </span>
             </span>
-          </span>
-          <div className="w-px h-3 bg-slate-200 dark:bg-[#334155]" />
-          <div className="flex items-center gap-1.5">
-            <div
-              className={cn(
-                'w-2 h-2 rounded-full',
-                connectionStatus === 'connected' && 'bg-green-500 shadow-sm shadow-green-500/50',
-                connectionStatus === 'disconnected' && 'bg-red-500 shadow-sm shadow-red-500/50',
-                connectionStatus === 'unknown' && 'bg-gray-500'
-              )}
-            />
-            <span className="text-xs text-slate-500 dark:text-[#64748b]">
-              {connectionStatus === 'connected' && '已连接'}
-              {connectionStatus === 'disconnected' && '未连接'}
-              {connectionStatus === 'unknown' && '检测中'}
-            </span>
+            <div className="h-3 w-px bg-slate-200 dark:bg-slate-700" />
+            <div className="flex items-center gap-1.5">
+              <div className={cn('h-2 w-2 rounded-full', statusDotClassName)} />
+              <span>{connectionLabel}</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-100/70 transition-colors duration-200 dark:bg-transparent">
-        {activeSession?.messages.map((message) => (
-          <div
-            key={message.id}
-            className={cn(
-              'flex gap-4',
-              message.role === 'user' && 'flex-row-reverse'
-            )}
-          >
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-100/70 transition-colors duration-200 dark:bg-transparent">
+            {activeSession?.messages.map((message) => (
+              <div
+                key={message.id}
+                className={cn(
+                  'flex gap-4',
+                  message.role === 'user' && 'flex-row-reverse'
+                )}
+              >
             {/* Avatar */}
-            <div
-              className={cn(
-                'w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-sm font-semibold transition-transform duration-200 hover:scale-105',
-                message.role === 'assistant'
-                  ? 'bg-gradient-to-br from-[#4a9eff] to-[#3b82f6] text-white shadow-lg shadow-[#4a9eff]/20'
-                  : 'bg-gradient-to-br from-[#22C55E] to-[#16a34a] text-white shadow-lg shadow-[#22C55E]/20'
-              )}
-            >
-              {message.role === 'assistant' ? (
-                <Sparkles className="w-5 h-5" />
-              ) : (
-                <User className="w-5 h-5" />
-              )}
-            </div>
+                <div
+                  className={cn(
+                    'w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center text-sm font-semibold transition-transform duration-200 hover:scale-105',
+                    message.role === 'assistant'
+                      ? 'bg-gradient-to-br from-[#4a9eff] to-[#3b82f6] text-white shadow-lg shadow-[#4a9eff]/20'
+                      : 'bg-gradient-to-br from-[#22C55E] to-[#16a34a] text-white shadow-lg shadow-[#22C55E]/20'
+                  )}
+                >
+                  {message.role === 'assistant' ? (
+                    <Sparkles className="w-5 h-5" />
+                  ) : (
+                    <User className="w-5 h-5" />
+                  )}
+                </div>
 
-            {/* Content */}
-            <div className="max-w-[65%] flex flex-col gap-2">
+                {/* Content */}
+                <div className="max-w-[65%] flex flex-col gap-2">
               {/* Thinking Section */}
-              {message.thinking !== undefined && message.thinking !== null && (
-                <div className="mb-3">
-                  <button
-                    onClick={() => handleToggleThinking(message.id)}
+                  {message.thinking !== undefined && message.thinking !== null && (
+                    <div className="mb-3">
+                      <button
+                        onClick={() => handleToggleThinking(message.id)}
                   className={cn(
                     'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium',
                     'border border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700',
@@ -451,161 +460,163 @@ export function ChatWorkspace() {
                     />
                   </button>
 
-                  <div
-                    className={getThinkingWrapperClass(!!message.thinkingExpanded)}
-                  >
-                    <div className={getThinkingPanelClass()}>
-                      <div className="flex items-center gap-2 px-4 pt-4 mb-3 pb-2 border-b border-[#334155]">
-                        <div className="flex items-center gap-1.5 text-xs text-[#64748b]">
-                          {isGenerating && message.id === activeSession?.messages[activeSession.messages.length - 1]?.id ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              <span>模型推理中...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Brain className="w-3 h-3" />
-                              <span>思考完成</span>
-                            </>
-                          )}
+                      <div
+                        className={getThinkingWrapperClass(!!message.thinkingExpanded)}
+                      >
+                        <div className={getThinkingPanelClass()}>
+                          <div className="flex items-center gap-2 px-4 pt-4 mb-3 pb-2 border-b border-[#334155]">
+                            <div className="flex items-center gap-1.5 text-xs text-[#64748b]">
+                              {isGenerating && message.id === activeSession?.messages[activeSession.messages.length - 1]?.id ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <span>模型推理中...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Brain className="w-3 h-3" />
+                                  <span>思考完成</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className={getThinkingBodyClass()}>
+                            <pre className="whitespace-pre-wrap font-mono text-xs text-[#94a3b8] leading-relaxed">
+                              {message.thinking}
+                            </pre>
+                          </div>
                         </div>
                       </div>
-                      <div className={getThinkingBodyClass()}>
-                        <pre className="whitespace-pre-wrap font-mono text-xs text-[#94a3b8] leading-relaxed">
-                          {message.thinking}
-                        </pre>
-                      </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  )}
 
               {/* Message Content */}
-              <div
-                className={cn(
-                  'rounded-2xl px-5 py-3.5 text-sm leading-relaxed shadow-md transition-all duration-200',
-                  message.role === 'assistant'
-                    ? [
-                        'rounded-tl-md border border-slate-200 bg-white text-slate-800',
-                        'dark:bg-[#1E293B]',
-                        'dark:text-[#E2E8F0]',
-                        'dark:border-[#334155]',
-                        'hover:shadow-lg'
-                      ]
-                    : [
-                        'bg-gradient-to-br from-[#4a9eff] to-[#3b82f6]',
-                        'text-white',
-                        'rounded-tr-md',
-                        'hover:shadow-lg hover:shadow-[#4a9eff]/20'
-                      ]
-                )}
-              >
-                {message.content ? (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      code({ className, children, ...props }) {
-                        const match = /language-(\w+)/.exec(className || '')
-                        const isInline = !match && !className
-                        return !isInline ? (
-                          <SyntaxHighlighter
-                            style={oneDark as Record<string, React.CSSProperties>}
-                            language={match?.[1] || 'text'}
-                            PreTag="div"
-                            className="rounded mt-2 !bg-[#1e1e1e] !p-3 text-xs"
-                          >
-                            {String(children).replace(/\n$/, '')}
-                          </SyntaxHighlighter>
-                        ) : (
-                          <code
-                            className={cn(
-                              'px-1 py-0.5 rounded bg-[#1e1e1e] text-[#4a9eff]',
-                              className
-                            )}
-                            {...props}
-                          >
-                            {children}
-                          </code>
-                        )
-                      },
-                    }}
+                  <div
+                    className={cn(
+                      'rounded-2xl px-5 py-3.5 text-sm leading-relaxed shadow-md transition-all duration-200',
+                      message.role === 'assistant'
+                        ? [
+                            'rounded-tl-md border border-slate-200 bg-white text-slate-800',
+                            'dark:bg-[#1E293B]',
+                            'dark:text-[#E2E8F0]',
+                            'dark:border-[#334155]',
+                            'hover:shadow-lg'
+                          ]
+                        : [
+                            'bg-gradient-to-br from-[#4a9eff] to-[#3b82f6]',
+                            'text-white',
+                            'rounded-tr-md',
+                            'hover:shadow-lg hover:shadow-[#4a9eff]/20'
+                          ]
+                    )}
                   >
-                    {message.content}
-                  </ReactMarkdown>
-                ) : isGenerating && message.role === 'assistant' ? (
-                  <span className="flex items-center gap-2 text-slate-500 dark:text-[#64748b]">
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>生成中...</span>
-                  </span>
-                ) : null}
+                    {message.content ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          code({ className, children, ...props }) {
+                            const match = /language-(\w+)/.exec(className || '')
+                            const isInline = !match && !className
+                            return !isInline ? (
+                              <SyntaxHighlighter
+                                style={oneDark as Record<string, React.CSSProperties>}
+                                language={match?.[1] || 'text'}
+                                PreTag="div"
+                                className="rounded mt-2 !bg-[#1e1e1e] !p-3 text-xs"
+                              >
+                                {String(children).replace(/\n$/, '')}
+                              </SyntaxHighlighter>
+                            ) : (
+                              <code
+                                className={cn(
+                                  'px-1 py-0.5 rounded bg-[#1e1e1e] text-[#4a9eff]',
+                                  className
+                                )}
+                                {...props}
+                              >
+                                {children}
+                              </code>
+                            )
+                          },
+                        }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    ) : isGenerating && message.role === 'assistant' ? (
+                      <span className="flex items-center gap-2 text-slate-500 dark:text-[#64748b]">
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>生成中...</span>
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="p-4 border-t border-slate-200 bg-white/85 backdrop-blur-sm transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#0F172A]/50">
+            <div className="relative flex gap-3 items-end">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="输入消息... (Shift+Enter 换行)"
+                className={cn(
+                  'w-full rounded-xl px-4 py-3.5 pr-12 border-2',
+                  'bg-white text-slate-900 placeholder:text-slate-400 border-slate-200',
+                  'dark:bg-[#1E293B] dark:text-[#E2E8F0] dark:placeholder-[#64748b]',
+                  'dark:border-transparent',
+                  'focus:outline-none',
+                  'transition-all duration-200 ease-out',
+                  'resize-none min-h-[48px] max-h-[120px]',
+                  'focus:border-[#4a9eff] focus:shadow-lg focus:shadow-[#4a9eff]/10',
+                  'hover:border-slate-300 dark:hover:border-[#334155]'
+                )}
+                rows={1}
+              />
+              {input.length > 0 && (
+                <div className="absolute bottom-2 right-16 text-xs text-slate-400 dark:text-[#475569]">
+                  {input.length}
+                </div>
+              )}
+              {isGenerating ? (
+                <button
+                  onClick={stopGeneration}
+                  className={cn(
+                    'w-12 h-12 rounded-xl flex items-center justify-center',
+                    'bg-[#dc2626] hover:bg-[#b91c1c]',
+                    'text-white',
+                    'shadow-lg shadow-[#dc2626]/30',
+                    'transition-all duration-200',
+                    'hover:scale-105 active:scale-95'
+                  )}
+                  title="停止生成"
+                >
+                  <Square size={18} />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className={cn(
+                    'w-12 h-12 rounded-xl flex items-center justify-center',
+                    'bg-gradient-to-br from-[#4a9eff] to-[#3b82f6]',
+                    'disabled:from-[#334155] disabled:to-[#1E293B]',
+                    'text-white disabled:text-[#64748b]',
+                    'shadow-lg',
+                    'transition-all duration-200 ease-out',
+                    'hover:scale-105 hover:shadow-xl hover:shadow-[#4a9eff]/30',
+                    'active:scale-95',
+                    'disabled:hover:scale-100 disabled:hover:shadow-lg'
+                  )}
+                  title="发送"
+                >
+                  <Send size={18} />
+                </button>
+              )}
             </div>
           </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input Area */}
-      <div className="p-4 border-t border-slate-200 bg-white/85 backdrop-blur-sm transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#0F172A]/50">
-        <div className="relative flex gap-3 items-end">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Shift+Enter 换行)"
-            className={cn(
-              'w-full rounded-xl px-4 py-3.5 pr-12 border-2',
-              'bg-white text-slate-900 placeholder:text-slate-400 border-slate-200',
-              'dark:bg-[#1E293B] dark:text-[#E2E8F0] dark:placeholder-[#64748b]',
-              'dark:border-transparent',
-              'focus:outline-none',
-              'transition-all duration-200 ease-out',
-              'resize-none min-h-[48px] max-h-[120px]',
-              'focus:border-[#4a9eff] focus:shadow-lg focus:shadow-[#4a9eff]/10',
-              'hover:border-slate-300 dark:hover:border-[#334155]'
-            )}
-            rows={1}
-          />
-          {input.length > 0 && (
-            <div className="absolute bottom-2 right-16 text-xs text-slate-400 dark:text-[#475569]">
-              {input.length}
-            </div>
-          )}
-          {isGenerating ? (
-            <button
-              onClick={stopGeneration}
-              className={cn(
-                'w-12 h-12 rounded-xl flex items-center justify-center',
-                'bg-[#dc2626] hover:bg-[#b91c1c]',
-                'text-white',
-                'shadow-lg shadow-[#dc2626]/30',
-                'transition-all duration-200',
-                'hover:scale-105 active:scale-95'
-              )}
-              title="停止生成"
-            >
-              <Square size={18} />
-            </button>
-          ) : (
-            <button
-              onClick={handleSend}
-              disabled={!input.trim()}
-              className={cn(
-                'w-12 h-12 rounded-xl flex items-center justify-center',
-                'bg-gradient-to-br from-[#4a9eff] to-[#3b82f6]',
-                'disabled:from-[#334155] disabled:to-[#1E293B]',
-                'text-white disabled:text-[#64748b]',
-                'shadow-lg',
-                'transition-all duration-200 ease-out',
-                'hover:scale-105 hover:shadow-xl hover:shadow-[#4a9eff]/30',
-                'active:scale-95',
-                'disabled:hover:scale-100 disabled:hover:shadow-lg'
-              )}
-              title="发送"
-            >
-              <Send size={18} />
-            </button>
-          )}
         </div>
       </div>
     </div>
