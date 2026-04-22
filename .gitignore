@@ -49,6 +49,7 @@ coverage
 
 # Misc
 .superpowers
+.worktrees
 
 # Codex
 .codex/
