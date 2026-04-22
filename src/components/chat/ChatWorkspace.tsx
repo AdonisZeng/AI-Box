@@ -19,6 +19,12 @@ import {
   getStageWorkspaceBackdropClass,
 } from './stage-shell-styles'
 import {
+  getComposerActionButtonClass,
+  getComposerRowClass,
+  getComposerShellClass,
+  getComposerTextareaClass,
+} from './composer-surface-styles'
+import {
   getAvatarClass,
   getMessageBubbleClass,
   getMessageColumnClass,
@@ -415,135 +421,127 @@ export function ChatWorkspace() {
 
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-100/70 transition-colors duration-200 dark:bg-transparent">
-            {activeSession?.messages.map((message) => {
-              const visualRole: ChatVisualRole = message.role === 'user' ? 'user' : 'assistant'
+          <div className="flex-1 overflow-y-auto px-5 py-5">
+            <div className="space-y-5">
+              {activeSession?.messages.map((message) => {
+                const visualRole: ChatVisualRole = message.role === 'user' ? 'user' : 'assistant'
 
-              return (
-                <div
-                  key={message.id}
-                  className={getMessageRowClass(visualRole)}
-                >
-                  <div className={getAvatarClass(visualRole)}>
-                    {visualRole === 'assistant' ? (
-                      <Sparkles className="h-5 w-5" />
-                    ) : (
-                      <User className="h-5 w-5" />
-                    )}
-                  </div>
+                return (
+                  <div
+                    key={message.id}
+                    className={getMessageRowClass(visualRole)}
+                  >
+                    <div className={getAvatarClass(visualRole)}>
+                      {visualRole === 'assistant' ? (
+                        <Sparkles className="h-5 w-5" />
+                      ) : (
+                        <User className="h-5 w-5" />
+                      )}
+                    </div>
 
-                  <div className={getMessageColumnClass(visualRole)}>
-                    {message.thinking !== undefined && message.thinking !== null && (
-                      <div className="w-full">
-                        <button
-                          onClick={() => handleToggleThinking(message.id)}
-                          className={cn(
-                            'flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/78 px-3 py-1.5 text-xs font-medium text-slate-500',
-                            'transition-all duration-200 hover:scale-105 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700 active:scale-95',
-                            'dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800/70 dark:hover:text-slate-200'
-                          )}
-                        >
-                          <Brain className="h-3.5 w-3.5" />
-                          <span>思考过程</span>
-                          <ChevronDown
+                    <div className={getMessageColumnClass(visualRole)}>
+                      {message.thinking !== undefined && message.thinking !== null && (
+                        <div className="w-full">
+                          <button
+                            onClick={() => handleToggleThinking(message.id)}
                             className={cn(
-                              'h-3.5 w-3.5 transition-transform duration-200',
-                              message.thinkingExpanded ? 'rotate-180' : ''
+                              'flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/78 px-3 py-1.5 text-xs font-medium text-slate-500',
+                              'transition-all duration-200 hover:scale-105 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700 active:scale-95',
+                              'dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800/70 dark:hover:text-slate-200'
                             )}
-                          />
-                        </button>
-
-                        <div className={getThinkingWrapperClass(!!message.thinkingExpanded)}>
-                          <div className={getThinkingPanelClass()}>
-                            <div className="flex items-center gap-2 border-b border-slate-200/70 px-4 pt-4 pb-2 text-[11px] text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
-                              {isGenerating && message.id === activeSession?.messages[activeSession.messages.length - 1]?.id ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  <span>模型推理中...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Brain className="h-3 w-3" />
-                                  <span>思考完成</span>
-                                </>
+                          >
+                            <Brain className="h-3.5 w-3.5" />
+                            <span>思考过程</span>
+                            <ChevronDown
+                              className={cn(
+                                'h-3.5 w-3.5 transition-transform duration-200',
+                                message.thinkingExpanded ? 'rotate-180' : ''
                               )}
-                            </div>
-                            <div className={getThinkingBodyClass()}>
-                              <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-slate-500 dark:text-slate-300">
-                                {message.thinking}
-                              </pre>
+                            />
+                          </button>
+
+                          <div className={getThinkingWrapperClass(!!message.thinkingExpanded)}>
+                            <div className={getThinkingPanelClass()}>
+                              <div className="flex items-center gap-2 border-b border-slate-200/70 px-4 pt-4 pb-2 text-[11px] text-slate-500 dark:border-slate-700/70 dark:text-slate-400">
+                                {isGenerating && message.id === activeSession?.messages[activeSession.messages.length - 1]?.id ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    <span>模型推理中...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Brain className="h-3 w-3" />
+                                    <span>思考完成</span>
+                                  </>
+                                )}
+                              </div>
+                              <div className={getThinkingBodyClass()}>
+                                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-slate-500 dark:text-slate-300">
+                                  {message.thinking}
+                                </pre>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    <div className={getMessageBubbleClass(visualRole)}>
-                      {message.content ? (
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            code({ className, children, ...props }) {
-                              const match = /language-(\w+)/.exec(className || '')
-                              const isInline = !match && !className
-                              return !isInline ? (
-                                <SyntaxHighlighter
-                                  style={oneDark as Record<string, React.CSSProperties>}
-                                  language={match?.[1] || 'text'}
-                                  PreTag="div"
-                                  className="rounded mt-2 !bg-[#1e1e1e] !p-3 text-xs"
-                                >
-                                  {String(children).replace(/\n$/, '')}
-                                </SyntaxHighlighter>
-                              ) : (
-                                <code
-                                  className={cn(
-                                    'rounded bg-[#1e1e1e] px-1 py-0.5 text-[#4a9eff]',
-                                    className
-                                  )}
-                                  {...props}
-                                >
-                                  {children}
-                                </code>
-                              )
-                            },
-                          }}
-                        >
-                          {message.content}
-                        </ReactMarkdown>
-                      ) : isGenerating && message.role === 'assistant' ? (
-                        <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-                          <Loader2 size={14} className="animate-spin" />
-                          <span>生成中...</span>
-                        </span>
-                      ) : null}
+                      <div className={getMessageBubbleClass(visualRole)}>
+                        {message.content ? (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              code({ className, children, ...props }) {
+                                const match = /language-(\w+)/.exec(className || '')
+                                const isInline = !match && !className
+                                return !isInline ? (
+                                  <SyntaxHighlighter
+                                    style={oneDark as Record<string, React.CSSProperties>}
+                                    language={match?.[1] || 'text'}
+                                    PreTag="div"
+                                    className="rounded mt-2 !bg-[#1e1e1e] !p-3 text-xs"
+                                  >
+                                    {String(children).replace(/\n$/, '')}
+                                  </SyntaxHighlighter>
+                                ) : (
+                                  <code
+                                    className={cn(
+                                      'rounded bg-[#1e1e1e] px-1 py-0.5 text-[#4a9eff]',
+                                      className
+                                    )}
+                                    {...props}
+                                  >
+                                    {children}
+                                  </code>
+                                )
+                              },
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        ) : isGenerating && message.role === 'assistant' ? (
+                          <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                            <Loader2 size={14} className="animate-spin" />
+                            <span>生成中...</span>
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
             <div ref={messagesEndRef} />
           </div>
 
           {/* Input Area */}
-          <div className="p-4 border-t border-slate-200 bg-white/85 backdrop-blur-sm transition-colors duration-200 dark:border-[#1E293B] dark:bg-[#0F172A]/50">
-            <div className="relative flex gap-3 items-end">
+          <div className={getComposerShellClass()}>
+            <div className={getComposerRowClass()}>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="输入消息... (Shift+Enter 换行)"
-                className={cn(
-                  'w-full rounded-xl px-4 py-3.5 pr-12 border-2',
-                  'bg-white text-slate-900 placeholder:text-slate-400 border-slate-200',
-                  'dark:bg-[#1E293B] dark:text-[#E2E8F0] dark:placeholder-[#64748b]',
-                  'dark:border-transparent',
-                  'focus:outline-none',
-                  'transition-all duration-200 ease-out',
-                  'resize-none min-h-[48px] max-h-[120px]',
-                  'focus:border-[#4a9eff] focus:shadow-lg focus:shadow-[#4a9eff]/10',
-                  'hover:border-slate-300 dark:hover:border-[#334155]'
-                )}
+                className={getComposerTextareaClass()}
                 rows={1}
               />
               {input.length > 0 && (
@@ -554,14 +552,7 @@ export function ChatWorkspace() {
               {isGenerating ? (
                 <button
                   onClick={stopGeneration}
-                  className={cn(
-                    'w-12 h-12 rounded-xl flex items-center justify-center',
-                    'bg-[#dc2626] hover:bg-[#b91c1c]',
-                    'text-white',
-                    'shadow-lg shadow-[#dc2626]/30',
-                    'transition-all duration-200',
-                    'hover:scale-105 active:scale-95'
-                  )}
+                  className={getComposerActionButtonClass('stop', false)}
                   title="停止生成"
                 >
                   <Square size={18} />
@@ -570,17 +561,7 @@ export function ChatWorkspace() {
                 <button
                   onClick={handleSend}
                   disabled={!input.trim()}
-                  className={cn(
-                    'w-12 h-12 rounded-xl flex items-center justify-center',
-                    'bg-gradient-to-br from-[#4a9eff] to-[#3b82f6]',
-                    'disabled:from-[#334155] disabled:to-[#1E293B]',
-                    'text-white disabled:text-[#64748b]',
-                    'shadow-lg',
-                    'transition-all duration-200 ease-out',
-                    'hover:scale-105 hover:shadow-xl hover:shadow-[#4a9eff]/30',
-                    'active:scale-95',
-                    'disabled:hover:scale-100 disabled:hover:shadow-lg'
-                  )}
+                  className={getComposerActionButtonClass('send', !input.trim())}
                   title="发送"
                 >
                   <Send size={18} />
