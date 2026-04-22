@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { resolveChatProviderId } from './provider-resolution'
+import { resolveChatProviderId } from './provider-resolution.ts'
 
 test('uses the latest active provider for chat requests', () => {
   const providerId = resolveChatProviderId('openai')
