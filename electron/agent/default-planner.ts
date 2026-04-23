@@ -59,7 +59,14 @@ export interface DefaultPlannerOptions {
     messages: Message[],
     input: PlannerNextInput
   ) => Promise<string>
+  maxProtocolRepairAttempts?: number
 }
+
+interface ParsePlannerDecisionOptions {
+  mode?: 'lenient' | 'strict'
+}
+
+const DEFAULT_PROTOCOL_REPAIR_ATTEMPTS = 2
 
 function createMessage(id: string, role: Message['role'], content: string): Message {
   return {
@@ -112,6 +119,37 @@ function requireString(value: unknown, field: string): string {
   return value
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? '')
+}
+
+function truncateForRepairPrompt(content: string): string {
+  const maxLength = 4000
+  if (content.length <= maxLength) {
+    return content
+  }
+
+  return `${content.slice(0, maxLength)}\n...[truncated]`
+}
+
+function buildProtocolRepairPrompt(error: unknown, previousResponse: string): string {
+  return [
+    'The previous planner response could not be parsed as a valid AI Box planner decision.',
+    `Parser error: ${errorMessage(error)}`,
+    'Return only one JSON object. Do not include markdown fences, prose, or extra keys outside the object.',
+    'Use exactly one of these canonical shapes:',
+    '{"type":"call_tool","toolName":"tool.name","arguments":{},"summary":"short reason","plan":["optional step"]}',
+    '{"type":"use_skill","skillId":"skill-id","summary":"short reason","plan":["optional step"]}',
+    '{"type":"run_script","runner":"node|python|shell","command":"command","cwd":"working directory","summary":"short reason","plan":["optional step"]}',
+    '{"type":"finish","summary":"short reason","finalMessage":"message to show the user","plan":["optional step"]}',
+    'Do not use next_action, nested action objects, result/content-only finish fields, or summary-only output.',
+    'Previous invalid response:',
+    '```json',
+    truncateForRepairPrompt(previousResponse),
+    '```',
+  ].join('\n')
+}
+
 export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[] {
   return [
     createMessage(
@@ -157,12 +195,23 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
   ]
 }
 
-export function parsePlannerDecision(content: string): PlannerDecision {
-  const parsed = JSON.parse(extractJsonBlock(content)) as Record<string, unknown>
-  const nestedAction = isRecord(parsed.next_action)
-    ? parsed.next_action
-    : isRecord(parsed.action)
-      ? parsed.action
+export function parsePlannerDecision(
+  content: string,
+  options: ParsePlannerDecisionOptions = {}
+): PlannerDecision {
+  const mode = options.mode ?? 'lenient'
+  const parsed = JSON.parse(extractJsonBlock(content)) as unknown
+  if (!isRecord(parsed)) {
+    throw new Error('Planner response must be a JSON object')
+  }
+
+  const nestedAction =
+    mode === 'lenient'
+      ? isRecord(parsed.next_action)
+        ? parsed.next_action
+        : isRecord(parsed.action)
+          ? parsed.action
+          : undefined
       : undefined
   const raw = nestedAction
     ? {
@@ -172,7 +221,8 @@ export function parsePlannerDecision(content: string): PlannerDecision {
       }
     : parsed
   const plan = normalizePlan(raw.plan)
-  const decisionType = typeof raw.type === 'string' ? raw.type : raw.action
+  const decisionType =
+    typeof raw.type === 'string' ? raw.type : mode === 'lenient' ? raw.action : undefined
 
   switch (decisionType) {
     case 'call_tool':
@@ -213,11 +263,13 @@ export function parsePlannerDecision(content: string): PlannerDecision {
       const finalMessage =
         typeof raw.finalMessage === 'string' && raw.finalMessage.trim() !== ''
           ? raw.finalMessage
-          : typeof raw.content === 'string' && raw.content.trim() !== ''
+          : mode === 'lenient' && typeof raw.content === 'string' && raw.content.trim() !== ''
             ? raw.content
-            : typeof raw.result === 'string' && raw.result.trim() !== ''
+            : mode === 'lenient' && typeof raw.result === 'string' && raw.result.trim() !== ''
               ? raw.result
-          : summary
+              : mode === 'lenient'
+                ? summary
+                : requireString(raw.finalMessage, 'finalMessage')
 
       return {
         type: 'finish',
@@ -228,7 +280,7 @@ export function parsePlannerDecision(content: string): PlannerDecision {
     }
 
     default:
-      if (typeof raw.summary === 'string' && raw.summary.trim() !== '') {
+      if (mode === 'lenient' && typeof raw.summary === 'string' && raw.summary.trim() !== '') {
         return {
           type: 'finish',
           summary: raw.summary,
@@ -243,14 +295,34 @@ export function parsePlannerDecision(content: string): PlannerDecision {
 
 export class DefaultPlanner {
   private options: DefaultPlannerOptions
+  private maxProtocolRepairAttempts: number
 
   constructor(options: DefaultPlannerOptions) {
     this.options = options
+    this.maxProtocolRepairAttempts =
+      options.maxProtocolRepairAttempts ?? DEFAULT_PROTOCOL_REPAIR_ATTEMPTS
   }
 
   async next(input: PlannerNextInput): Promise<PlannerDecision> {
-    const messages = buildPlannerMessages(input)
-    const response = await this.options.callModel(messages, input)
+    let messages = buildPlannerMessages(input)
+    let response = await this.options.callModel(messages, input)
+
+    for (let attempt = 0; attempt <= this.maxProtocolRepairAttempts; attempt += 1) {
+      try {
+        return parsePlannerDecision(response, { mode: 'strict' })
+      } catch (error) {
+        if (attempt >= this.maxProtocolRepairAttempts) {
+          return parsePlannerDecision(response)
+        }
+
+        messages = [
+          ...messages,
+          createMessage(`planner-invalid-${attempt}`, 'assistant', response),
+          createMessage(`planner-repair-${attempt}`, 'user', buildProtocolRepairPrompt(error, response)),
+        ]
+        response = await this.options.callModel(messages, input)
+      }
+    }
 
     return parsePlannerDecision(response)
   }

@@ -216,3 +216,48 @@ test('uses the injected model caller to produce the next planner decision', asyn
   assert.equal(decision.type, 'finish')
   assert.equal(decision.finalMessage, 'All work is complete.')
 })
+
+test('asks the model to repair invalid planner protocol output before falling back', async () => {
+  const calls: string[][] = []
+  const planner = new DefaultPlanner({
+    callModel: async (messages) => {
+      calls.push(messages.map((message) => String(message.content)))
+      return calls.length === 1
+        ? JSON.stringify({
+            summary: '用户询问我能做什么。我将总结核心能力。',
+            plan: [],
+          })
+        : JSON.stringify({
+            type: 'finish',
+            summary: 'answered',
+            finalMessage: '我可以帮你完成开发、设计、搜索和任务管理。',
+          })
+    },
+  })
+
+  const decision = await planner.next({
+    prompt: '你能为我做什么？',
+    mode: 'auto',
+    skills: [],
+    tools: [],
+    memories: [],
+    planning: {
+      items: [],
+      roundsSinceUpdate: 0,
+    },
+    loop: {
+      turnCount: 1,
+      transitionReason: null,
+      compactionCount: 0,
+      messages: [{ role: 'user', content: '你能为我做什么？', timestamp: 1 }],
+    },
+    observations: [],
+  })
+
+  assert.equal(decision.type, 'finish')
+  assert.equal(decision.finalMessage, '我可以帮你完成开发、设计、搜索和任务管理。')
+  assert.equal(calls.length, 2)
+  assert.match(calls[1]?.at(-1) ?? '', /previous planner response could not be parsed/i)
+  assert.match(calls[1]?.at(-1) ?? '', /supported type or action field/i)
+  assert.match(calls[1]?.at(-1) ?? '', /用户询问我能做什么/)
+})
