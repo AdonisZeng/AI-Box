@@ -1,3 +1,4 @@
+export { useAgentStore } from './agent'
 export { useChatStore } from './chat'
 export { useModuleStore } from './modules'
 export { useSettingsStore } from './settings'
