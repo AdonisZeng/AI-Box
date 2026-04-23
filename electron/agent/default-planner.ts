@@ -228,6 +228,15 @@ export function parsePlannerDecision(content: string): PlannerDecision {
     }
 
     default:
+      if (typeof raw.summary === 'string' && raw.summary.trim() !== '') {
+        return {
+          type: 'finish',
+          summary: raw.summary,
+          finalMessage: raw.summary,
+          plan,
+        }
+      }
+
       throw new Error('Planner response must include a supported type or action field')
   }
 }

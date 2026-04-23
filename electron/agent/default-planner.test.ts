@@ -166,6 +166,22 @@ test('accepts nested action object finish output from local models', () => {
   assert.deepEqual(decision.plan, ['[completed] 回答用户关于能力的询问'])
 })
 
+test('treats summary-only planner output as a finish decision', () => {
+  const decision = parsePlannerDecision(`
+    {
+      "summary": "用户询问我能做什么。我将总结我的核心能力，包括开发、设计、搜索和任务管理等方面。",
+      "plan": []
+    }
+  `)
+
+  assert.equal(decision.type, 'finish')
+  assert.equal(
+    decision.finalMessage,
+    '用户询问我能做什么。我将总结我的核心能力，包括开发、设计、搜索和任务管理等方面。'
+  )
+  assert.deepEqual(decision.plan, [])
+})
+
 test('uses the injected model caller to produce the next planner decision', async () => {
   const planner = new DefaultPlanner({
     callModel: async (messages) => {
