@@ -27,7 +27,10 @@ function createRequest(mode: 'auto' | 'confirm-external' = 'auto') {
 }
 
 test('feeds tool results back into the planner before finishing', async () => {
-  const plannerInputs: Array<{ observations: unknown[] }> = []
+  const plannerInputs: Array<{
+    observations: unknown[]
+    loop: { turnCount: number; transitionReason: string | null }
+  }> = []
   const runtime = new AgentRuntime({
     sessions: new TaskSessionManager(),
     skillRegistry: { load: async () => [] },
@@ -44,7 +47,13 @@ test('feeds tool results back into the planner before finishing', async () => {
     approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
     planner: {
       next: async (input) => {
-        plannerInputs.push({ observations: input.observations })
+        plannerInputs.push({
+          observations: input.observations,
+          loop: {
+            turnCount: input.loop.turnCount,
+            transitionReason: input.loop.transitionReason,
+          },
+        })
         return plannerInputs.length === 1
           ? {
               type: 'call_tool' as const,
@@ -67,6 +76,34 @@ test('feeds tool results back into the planner before finishing', async () => {
   assert.equal(result.status, 'completed')
   assert.equal(plannerInputs.length, 2)
   assert.equal(plannerInputs[1]?.observations.length, 1)
+  assert.deepEqual(plannerInputs.map((input) => input.loop), [
+    { turnCount: 1, transitionReason: null },
+    { turnCount: 2, transitionReason: 'tool_result' },
+  ])
+  assert.equal(result.loop.turnCount, 2)
+  assert.equal(result.loop.transitionReason, null)
+  assert.equal(result.loop.messages[0]?.role, 'user')
+  assert.equal(result.loop.messages[1]?.role, 'assistant')
+  assert.deepEqual(result.loop.messages[1]?.content, {
+    type: 'call_tool',
+    toolName: 'filesystem.read_file',
+    arguments: { path: 'package.json' },
+    summary: 'Read package.json',
+    plan: ['Read package.json', 'Summarize findings'],
+    tool_use_id: result.observations[0]?.actionId,
+  })
+  assert.deepEqual(result.loop.messages[2]?.content, [
+    {
+      type: 'tool_result',
+      tool_use_id: result.observations[0]?.actionId,
+      status: 'success',
+      name: 'filesystem.read_file',
+      summary: 'Read package.json',
+      content: JSON.stringify({ text: 'package.json contents' }),
+      artifacts: [],
+    },
+  ])
+  assert.equal(result.loop.messages[3]?.role, 'assistant')
   assert.equal(result.events.some((event) => event.type === 'step.started'), true)
   assert.equal(result.events.some((event) => event.type === 'step.completed'), true)
 })

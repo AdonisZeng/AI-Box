@@ -23,6 +23,29 @@ test('serializes task context, skills, tools, and observations into prompt messa
       },
     ],
     tools: [{ name: 'filesystem.read_file', description: 'Read a file', inputSchema: {} }],
+    loop: {
+      turnCount: 2,
+      transitionReason: 'tool_result',
+      messages: [
+        { role: 'user', content: 'Find the active provider', timestamp: 1 },
+        {
+          role: 'assistant',
+          content: { type: 'call_tool', toolName: 'filesystem.read_file' },
+          timestamp: 2,
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'step-2',
+              content: '{"name":"ai-box"}',
+            },
+          ],
+          timestamp: 3,
+        },
+      ],
+    },
     observations: [
       {
         type: 'tool_result',
@@ -41,6 +64,8 @@ test('serializes task context, skills, tools, and observations into prompt messa
   assert.match(messages[1]?.content ?? '', /filesystem\.read_file/)
   assert.match(messages[1]?.content ?? '', /repo-summary/)
   assert.match(messages[1]?.content ?? '', /confirm-external/)
+  assert.match(messages[1]?.content ?? '', /"turnCount": 2/)
+  assert.match(messages[1]?.content ?? '', /"transitionReason": "tool_result"/)
 })
 
 test('parses JSON planner output into a normalized action', () => {
@@ -76,6 +101,11 @@ test('uses the injected model caller to produce the next planner decision', asyn
     mode: 'auto',
     skills: [],
     tools: [],
+    loop: {
+      turnCount: 1,
+      transitionReason: null,
+      messages: [{ role: 'user', content: 'Summarize the repository', timestamp: 1 }],
+    },
     observations: [],
   })
 

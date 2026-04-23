@@ -129,18 +129,33 @@ export class AgentRuntime {
 
       for (;;) {
         const current = this.requireSession(taskId)
+        const pendingAction = nextAction
+        const isResumingPendingAction = pendingAction !== null
         const decision =
-          nextAction !== null
-            ? this.pendingActionToDecision(nextAction)
+          isResumingPendingAction
+            ? this.pendingActionToDecision(pendingAction)
             : await this.deps.planner.next({
                 prompt: request.prompt,
                 mode: request.mode,
                 provider: request.provider,
                 skills,
                 tools,
+                loop: current.loop,
                 observations: current.observations,
               })
-        const skipApproval = nextAction !== null
+        const actionId =
+          decision.type === 'finish'
+            ? null
+            : pendingAction?.actionId ?? this.createActionId(decision.type)
+
+        if (!isResumingPendingAction) {
+          this.deps.sessions.recordAssistantDecision(
+            taskId,
+            this.decisionToLoopMessage(decision, actionId)
+          )
+        }
+
+        const skipApproval = isResumingPendingAction
         nextAction = null
 
         if (decision.plan && decision.plan.length > 0) {
@@ -171,6 +186,7 @@ export class AgentRuntime {
             if (approval.requiresApproval && approval.request) {
               this.deps.sessions.setAwaitingApproval(taskId, approval.request, {
                 type: 'use_skill',
+                actionId: actionId ?? undefined,
                 skillId: skill.id,
                 summary: decision.summary,
               })
@@ -190,7 +206,12 @@ export class AgentRuntime {
           })
 
           const result = await this.deps.skillExecutor.execute(skill)
-          this.deps.sessions.addObservation(taskId, result.observation)
+          const observation: AgentObservation = {
+            ...result.observation,
+            actionId: actionId ?? result.observation.actionId,
+          }
+          this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
           this.emitEvent(taskId, 'script.output', {
             output: result.rawExcerpt,
           })
@@ -217,6 +238,7 @@ export class AgentRuntime {
             if (approval.requiresApproval && approval.request) {
               this.deps.sessions.setAwaitingApproval(taskId, approval.request, {
                 type: 'run_script',
+                actionId: actionId ?? undefined,
                 runner: decision.runner,
                 command: decision.command,
                 cwd: decision.cwd,
@@ -240,7 +262,7 @@ export class AgentRuntime {
           })
           const observation: AgentObservation = {
             type: 'script_result',
-            actionId: `script-${Date.now()}`,
+            actionId: actionId ?? this.createActionId('run_script'),
             name: decision.command,
             status: result.exitCode === 0 ? 'success' : 'error',
             summary: decision.summary,
@@ -254,6 +276,7 @@ export class AgentRuntime {
           }
 
           this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
           this.emitEvent(taskId, 'script.output', {
             output: observation.rawExcerpt,
           })
@@ -278,6 +301,7 @@ export class AgentRuntime {
           if (approval.requiresApproval && approval.request) {
             this.deps.sessions.setAwaitingApproval(taskId, approval.request, {
               type: 'call_tool',
+              actionId: actionId ?? undefined,
               toolName: decision.toolName,
               arguments: decision.arguments,
               summary: decision.summary,
@@ -299,7 +323,7 @@ export class AgentRuntime {
         )
         const observation: AgentObservation = {
           type: 'tool_result',
-          actionId: `tool-${Date.now()}`,
+          actionId: actionId ?? this.createActionId('call_tool'),
           name: decision.toolName,
           status: 'success',
           summary: decision.summary,
@@ -309,6 +333,7 @@ export class AgentRuntime {
         }
 
         this.deps.sessions.addObservation(taskId, observation)
+        this.deps.sessions.recordObservationWriteBack(taskId, observation)
         this.emitEvent(taskId, 'tool.call.finished', {
           name: decision.toolName,
           summary: decision.summary,
@@ -325,6 +350,55 @@ export class AgentRuntime {
       })
       return failed
     }
+  }
+
+  private decisionToLoopMessage(
+    decision: PlannerDecision,
+    actionId: string | null
+  ): Record<string, unknown> {
+    if (decision.type === 'call_tool') {
+      return {
+        type: decision.type,
+        toolName: decision.toolName,
+        arguments: decision.arguments,
+        summary: decision.summary,
+        plan: decision.plan,
+        tool_use_id: actionId,
+      }
+    }
+
+    if (decision.type === 'use_skill') {
+      return {
+        type: decision.type,
+        skillId: decision.skillId,
+        summary: decision.summary,
+        plan: decision.plan,
+        tool_use_id: actionId,
+      }
+    }
+
+    if (decision.type === 'run_script') {
+      return {
+        type: decision.type,
+        runner: decision.runner,
+        command: decision.command,
+        cwd: decision.cwd,
+        summary: decision.summary,
+        plan: decision.plan,
+        tool_use_id: actionId,
+      }
+    }
+
+    return {
+      type: decision.type,
+      summary: decision.summary,
+      finalMessage: decision.finalMessage,
+      plan: decision.plan,
+    }
+  }
+
+  private createActionId(actionType: 'call_tool' | 'use_skill' | 'run_script'): string {
+    return `${actionType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   }
 
   private pendingActionToDecision(action: AgentPendingAction): PlannerDecision {

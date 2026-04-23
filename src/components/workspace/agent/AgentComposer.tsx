@@ -60,14 +60,14 @@ export function AgentComposer({
     <div className={getComposerShellClass()}>
       <div className="mx-auto max-w-4xl">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs text-slate-500 shadow-sm backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
+          <div className="flex items-center gap-2 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs text-slate-500 shadow-sm backdrop-blur-xl dark:border-slate-700/70 dark:bg-black dark:text-slate-400">
             <SlidersHorizontal className="h-3.5 w-3.5" />
             <span>Provider：{providerName}</span>
             <span className="h-3 w-px bg-slate-200 dark:bg-slate-700" />
             <span>MCP：{connectedServerCount} 个已连接</span>
           </div>
 
-          <div className="flex rounded-full border border-white/80 bg-white/70 p-1 shadow-sm backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/60">
+          <div className="flex rounded-full border border-white/80 bg-white/70 p-1 shadow-sm backdrop-blur-xl dark:border-slate-700/70 dark:bg-black">
             {modeOptions.map((option) => {
               const active = option.id === mode
               return (
@@ -81,7 +81,7 @@ export function AgentComposer({
                     'rounded-full px-3 py-1.5 text-xs font-medium transition',
                     active
                       ? 'bg-[#4a9eff] text-white shadow-sm shadow-blue-500/20'
-                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-black dark:hover:text-slate-100'
                   )}
                 >
                   {option.label}

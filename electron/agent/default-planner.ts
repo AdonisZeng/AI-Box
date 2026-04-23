@@ -1,5 +1,9 @@
 import type { MCPTool } from '../../src/types/mcp.ts'
-import type { AgentExecutionMode, AgentObservation } from '../../src/types/agent.ts'
+import type {
+  AgentExecutionMode,
+  AgentLoopState,
+  AgentObservation,
+} from '../../src/types/agent.ts'
 import type { Message, ProviderConfig } from '../../src/types/providers.ts'
 import type { AgentSkillSummary } from './skill-registry.ts'
 
@@ -37,6 +41,7 @@ export interface BuildPlannerMessagesInput {
   mode: AgentExecutionMode
   skills: AgentSkillSummary[]
   tools: MCPTool[]
+  loop: AgentLoopState
   observations: AgentObservation[]
 }
 
@@ -99,6 +104,8 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
         'Choose exactly one next action and return only one JSON object.',
         'Allowed action types: call_tool, use_skill, run_script, finish.',
         'Only use tools and skills from the provided context.',
+        'Treat loopState.messages as the authoritative agent loop transcript.',
+        'When loopState.transitionReason is a tool, skill, or script result, use that result before deciding the next action.',
         'Include a short summary and an optional plan array when useful.',
       ].join(' ')
     ),
@@ -111,6 +118,7 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
           executionMode: input.mode,
           availableSkills: input.skills,
           availableTools: input.tools,
+          loopState: input.loop,
           observations: input.observations,
         },
         null,

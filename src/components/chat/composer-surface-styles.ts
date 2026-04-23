@@ -1,14 +1,14 @@
 export function getComposerShellClass(): string {
   return [
     'mt-auto border-t border-slate-200/80 bg-white/60 px-4 py-4 backdrop-blur-xl',
-    'dark:border-slate-700/70 dark:bg-slate-950/40',
+    'dark:border-slate-700/70 dark:bg-black',
   ].join(' ')
 }
 
 export function getComposerRowClass(): string {
   return [
     'relative flex items-end gap-3 rounded-[24px] border border-white/80 bg-white/90 p-3',
-    'shadow-[0_18px_40px_rgba(148,163,184,0.14)] dark:border-slate-700/80 dark:bg-slate-900/70 dark:shadow-[0_20px_44px_rgba(2,6,23,0.32)]',
+    'shadow-[0_18px_40px_rgba(148,163,184,0.14)] dark:border-slate-700/80 dark:bg-black dark:shadow-[0_20px_44px_rgba(2,6,23,0.32)]',
   ].join(' ')
 }
 

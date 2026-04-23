@@ -77,7 +77,7 @@ export function AgentChatTimeline({
 
 function AgentWelcomeCard() {
   return (
-    <div className="mx-auto mt-6 max-w-2xl rounded-[28px] border border-white/80 bg-white/75 p-6 text-center shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/60 dark:shadow-[0_28px_70px_rgba(2,6,23,0.34)]">
+    <div className="mx-auto mt-6 max-w-2xl rounded-[28px] border border-white/80 bg-white/75 p-6 text-center shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-black dark:shadow-[0_28px_70px_rgba(2,6,23,0.34)]">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[22px] bg-gradient-to-br from-[#4a9eff] to-[#2563eb] text-white shadow-lg shadow-blue-500/25">
         <Bot className="h-7 w-7" />
       </div>
@@ -118,8 +118,8 @@ function AssistantMessage({
         className={cn(
           'max-w-[min(44rem,82%)] rounded-[24px] rounded-tl-[12px] border px-4 py-3 text-sm leading-7 shadow-[0_18px_44px_rgba(148,163,184,0.16)] backdrop-blur-xl',
           tone === 'error'
-            ? 'border-red-200/80 bg-red-50/80 text-red-950 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-100'
-            : 'border-slate-200/80 bg-white/90 text-slate-800 dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-100'
+            ? 'border-red-200/80 bg-red-50/80 text-red-950 dark:border-red-900/70 dark:bg-black dark:text-red-100'
+            : 'border-slate-200/80 bg-white/90 text-slate-800 dark:border-slate-700/80 dark:bg-black dark:text-slate-100'
         )}
       >
         <ReactMarkdown
@@ -130,7 +130,7 @@ function AssistantMessage({
               return isInline ? (
                 <code
                   className={cn(
-                    'rounded bg-slate-950 px-1 py-0.5 text-sky-200',
+                    'rounded bg-slate-950 px-1 py-0.5 text-sky-200 dark:bg-black',
                     className
                   )}
                   {...props}
@@ -138,7 +138,7 @@ function AssistantMessage({
                   {children}
                 </code>
               ) : (
-                <pre className="mt-3 overflow-x-auto rounded-2xl bg-slate-950 p-3 text-xs leading-6 text-sky-100">
+                <pre className="mt-3 overflow-x-auto rounded-2xl bg-slate-950 p-3 text-xs leading-6 text-sky-100 dark:bg-black">
                   <code className={className} {...props}>
                     {children}
                   </code>
@@ -167,7 +167,7 @@ function AgentThinkingRow() {
   return (
     <div className="flex items-start gap-3">
       <AssistantAvatar tone="success" subtle />
-      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/75 px-4 py-2 text-xs text-slate-500 shadow-sm backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
+      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/75 px-4 py-2 text-xs text-slate-500 shadow-sm backdrop-blur-xl dark:border-slate-700/70 dark:bg-black dark:text-slate-400">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Agent 正在规划下一步...
       </div>

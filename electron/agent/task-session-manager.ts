@@ -14,6 +14,7 @@ export class TaskSessionManager {
 
   create(input: CreateTaskSessionInput): AgentTaskSession {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const timestamp = Date.now()
     const session: AgentTaskSession = {
       id,
       prompt: input.prompt,
@@ -25,11 +26,22 @@ export class TaskSessionManager {
         {
           type: 'task.created',
           taskId: id,
-          timestamp: Date.now(),
+          timestamp,
           payload: { prompt: input.prompt, mode: input.mode },
         },
       ],
       observations: [],
+      loop: {
+        messages: [
+          {
+            role: 'user',
+            content: input.prompt,
+            timestamp,
+          },
+        ],
+        turnCount: 1,
+        transitionReason: null,
+      },
       approval: {
         state: 'idle',
         request: null,
@@ -53,6 +65,37 @@ export class TaskSessionManager {
   addObservation(taskId: string, observation: AgentObservation): void {
     const session = this.require(taskId)
     session.observations.push(observation)
+  }
+
+  recordAssistantDecision(taskId: string, decision: Record<string, unknown>): void {
+    const session = this.require(taskId)
+    session.loop.messages.push({
+      role: 'assistant',
+      content: decision,
+      timestamp: Date.now(),
+    })
+    session.loop.transitionReason = null
+  }
+
+  recordObservationWriteBack(taskId: string, observation: AgentObservation): void {
+    const session = this.require(taskId)
+    session.loop.messages.push({
+      role: 'user',
+      content: [
+        {
+          type: observation.type,
+          tool_use_id: observation.actionId,
+          status: observation.status,
+          name: observation.name,
+          summary: observation.summary,
+          content: observation.rawExcerpt,
+          artifacts: observation.artifacts,
+        },
+      ],
+      timestamp: Date.now(),
+    })
+    session.loop.turnCount += 1
+    session.loop.transitionReason = observation.type
   }
 
   setAwaitingApproval(

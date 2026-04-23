@@ -17,6 +17,7 @@ test('assistant rows keep a wider reading column with tighter bubble padding', (
   assert.ok(bubble.includes('px-4'))
   assert.ok(bubble.includes('py-3'))
   assert.ok(bubble.includes('rounded-[22px]'))
+  assert.ok(bubble.includes('dark:bg-black'))
 })
 
 test('user rows reverse alignment and keep a denser footprint', () => {

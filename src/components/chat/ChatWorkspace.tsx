@@ -381,7 +381,7 @@ export function ChatWorkspace() {
                 {sessions.length > 1 && (
                   <span
                     onClick={(e) => handleDeleteChat(e, session.id)}
-                    className="rounded-full p-0.5 opacity-0 transition-opacity hover:bg-slate-200/80 group-hover:opacity-100 dark:hover:bg-slate-700/60"
+                    className="rounded-full p-0.5 opacity-0 transition-opacity hover:bg-slate-200/80 group-hover:opacity-100 dark:hover:bg-black"
                   >
                     <Trash2 size={10} />
                   </span>
@@ -447,7 +447,7 @@ export function ChatWorkspace() {
                             className={cn(
                               'flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/78 px-3 py-1.5 text-xs font-medium text-slate-500',
                               'transition-all duration-200 hover:scale-105 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700 active:scale-95',
-                              'dark:border-slate-700/80 dark:bg-slate-900/60 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800/70 dark:hover:text-slate-200'
+                              'dark:border-slate-700/80 dark:bg-black dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-black dark:hover:text-slate-200'
                             )}
                           >
                             <Brain className="h-3.5 w-3.5" />
@@ -498,14 +498,14 @@ export function ChatWorkspace() {
                                     style={oneDark as Record<string, React.CSSProperties>}
                                     language={match?.[1] || 'text'}
                                     PreTag="div"
-                                    className="rounded mt-2 !bg-[#1e1e1e] !p-3 text-xs"
+                                    className="rounded mt-2 !bg-[#1e1e1e] !p-3 text-xs dark:!bg-black"
                                   >
                                     {String(children).replace(/\n$/, '')}
                                   </SyntaxHighlighter>
                                 ) : (
                                   <code
                                     className={cn(
-                                      'rounded bg-[#1e1e1e] px-1 py-0.5 text-[#4a9eff]',
+                                      'rounded bg-[#1e1e1e] px-1 py-0.5 text-[#4a9eff] dark:bg-black',
                                       className
                                     )}
                                     {...props}

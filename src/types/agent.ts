@@ -10,6 +10,19 @@ export type AgentTaskStatus =
   | 'rejected'
 export type AgentActionStatus = 'success' | 'error'
 export type AgentObservationType = 'tool_result' | 'skill_result' | 'script_result'
+export type AgentLoopTransitionReason = AgentObservationType | null
+
+export interface AgentLoopMessage {
+  role: 'user' | 'assistant'
+  content: string | Record<string, unknown> | Array<Record<string, unknown>>
+  timestamp: number
+}
+
+export interface AgentLoopState {
+  messages: AgentLoopMessage[]
+  turnCount: number
+  transitionReason: AgentLoopTransitionReason
+}
 
 export interface AgentApprovalRequest {
   actionId: string
@@ -20,17 +33,20 @@ export interface AgentApprovalRequest {
 export type AgentPendingAction =
   | {
       type: 'call_tool'
+      actionId?: string
       toolName: string
       arguments: Record<string, unknown>
       summary: string
     }
   | {
       type: 'use_skill'
+      actionId?: string
       skillId: string
       summary: string
     }
   | {
       type: 'run_script'
+      actionId?: string
       runner: 'node' | 'python' | 'shell'
       command: string
       cwd: string
@@ -85,6 +101,7 @@ export interface AgentTaskSession {
   status: AgentTaskStatus
   events: AgentTaskEvent[]
   observations: AgentObservation[]
+  loop: AgentLoopState
   approval: {
     state: 'idle' | 'pending' | 'resolved'
     request: AgentApprovalRequest | null

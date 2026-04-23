@@ -19,6 +19,7 @@ test('thinking panel uses the premium stage card treatment', () => {
   assert.ok(className.includes('rounded-2xl'))
   assert.ok(className.includes('backdrop-blur-xl'))
   assert.ok(className.includes('border-slate-200/80'))
+  assert.ok(className.includes('dark:bg-black'))
 })
 
 test('thinking body still scrolls long reasoning content', () => {

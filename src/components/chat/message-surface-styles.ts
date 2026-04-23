@@ -27,6 +27,6 @@ export function getMessageBubbleClass(role: ChatVisualRole): string {
     : [
         'rounded-[22px] rounded-tl-[12px] border px-4 py-3 text-sm leading-relaxed',
         'border-slate-200/80 bg-white/88 text-slate-800 shadow-[0_16px_34px_rgba(148,163,184,0.14)]',
-        'dark:border-slate-700/80 dark:bg-slate-900/74 dark:text-slate-100',
+        'dark:border-slate-700/80 dark:bg-black dark:text-slate-100',
       ].join(' ')
 }
