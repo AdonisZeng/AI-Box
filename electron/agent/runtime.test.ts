@@ -232,6 +232,49 @@ test('resumes the pending action after approval', async () => {
   assert.equal(resumed?.observations.length, 1)
 })
 
+test('emits a rejected event when approval is rejected', async () => {
+  const events: Array<{ type: string }> = []
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [{ name: 'filesystem.read_file', description: 'Read a file', inputSchema: {} }],
+      callTool: async () => ({ text: 'never called' }),
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: {
+      evaluate: () => ({
+        requiresApproval: true,
+        request: {
+          actionId: 'step-1',
+          title: 'Call filesystem.read_file',
+          details: 'Read package.json',
+        },
+      }),
+    },
+    planner: {
+      next: async () => ({
+        type: 'call_tool' as const,
+        toolName: 'filesystem.read_file',
+        arguments: { path: 'package.json' },
+        summary: 'Read package.json',
+      }),
+    },
+  })
+  runtime.onTaskEvent((event) => events.push({ type: event.type }))
+
+  const blocked = await runtime.start(createRequest('confirm-external'))
+  const rejected = runtime.rejectAction(blocked.id, 'step-1')
+
+  assert.equal(rejected?.status, 'rejected')
+  assert.equal(events.at(-1)?.type, 'task.rejected')
+})
+
 test('pauses executable skill use in confirm-external mode before running it', async () => {
   const runtime = new AgentRuntime({
     sessions: new TaskSessionManager(),

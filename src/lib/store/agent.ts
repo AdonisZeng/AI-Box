@@ -16,6 +16,7 @@ interface ToolTrace {
 interface AgentStoreState {
   currentTaskId: string | null
   status: AgentTaskStatus | 'idle'
+  events: AgentTaskEvent[]
   plan: string[]
   selectedSkills: string[]
   toolCalls: ToolTrace[]
@@ -29,6 +30,7 @@ interface AgentStoreState {
 const initialState: Omit<AgentStoreState, 'applyEvent' | 'reset'> = {
   currentTaskId: null,
   status: 'idle',
+  events: [],
   plan: [],
   selectedSkills: [],
   toolCalls: [],
@@ -45,6 +47,10 @@ export const createAgentStore = () =>
         const nextState: Omit<AgentStoreState, 'applyEvent' | 'reset'> = {
           ...state,
           currentTaskId: event.taskId,
+          events:
+            event.type === 'task.created'
+              ? [event]
+              : [...state.events, event],
         }
 
         if (event.type === 'task.created') {
@@ -63,6 +69,8 @@ export const createAgentStore = () =>
         }
 
         if (event.type === 'step.started') {
+          nextState.status = 'running'
+          nextState.approval = null
           nextState.logs = [
             ...state.logs,
             formatStepLog('开始步骤', event.payload),
@@ -90,6 +98,8 @@ export const createAgentStore = () =>
         }
 
         if (event.type === 'tool.call.started') {
+          nextState.status = 'running'
+          nextState.approval = null
           const name = String(event.payload?.name ?? '')
           const summary =
             typeof event.payload?.summary === 'string'
@@ -158,6 +168,8 @@ export const createAgentStore = () =>
         }
 
         if (event.type === 'script.started') {
+          nextState.status = 'running'
+          nextState.approval = null
           const label =
             typeof event.payload?.skillId === 'string'
               ? `Skill ${event.payload.skillId}`
@@ -189,9 +201,10 @@ export const createAgentStore = () =>
 
         if (event.type === 'approval.required') {
           nextState.status = 'awaiting-approval'
-          nextState.approval = event.payload as AgentApprovalRequest
-          if (typeof event.payload?.title === 'string') {
-            nextState.logs = [...state.logs, `等待确认：${event.payload.title}`]
+          const approvalRequest = toApprovalRequest(event.payload)
+          nextState.approval = approvalRequest
+          if (approvalRequest.title) {
+            nextState.logs = [...state.logs, `等待确认：${approvalRequest.title}`]
           }
           return nextState
         }
@@ -203,6 +216,17 @@ export const createAgentStore = () =>
           if (nextState.finalMessage) {
             nextState.logs = [...state.logs, `任务完成：${nextState.finalMessage}`]
           }
+          return nextState
+        }
+
+        if (event.type === 'task.rejected') {
+          nextState.status = 'rejected'
+          nextState.approval = null
+          const message =
+            typeof event.payload?.message === 'string' && event.payload.message.trim()
+              ? event.payload.message
+              : '用户拒绝了外部操作。'
+          nextState.logs = [...state.logs, message]
           return nextState
         }
 
@@ -234,4 +258,21 @@ function formatStepLog(prefix: string, payload?: Record<string, unknown>): strin
   const suffix = [summary, name].filter(Boolean).join(' | ')
 
   return suffix ? `${prefix}：${actionType} - ${suffix}` : `${prefix}：${actionType}`
+}
+
+function toApprovalRequest(payload?: Record<string, unknown>): AgentApprovalRequest {
+  return {
+    actionId:
+      typeof payload?.actionId === 'string' && payload.actionId.trim()
+        ? payload.actionId
+        : 'unknown-action',
+    title:
+      typeof payload?.title === 'string' && payload.title.trim()
+        ? payload.title
+        : '需要确认外部操作',
+    details:
+      typeof payload?.details === 'string' && payload.details.trim()
+        ? payload.details
+        : 'Agent 请求执行需要确认的外部操作。',
+  }
 }

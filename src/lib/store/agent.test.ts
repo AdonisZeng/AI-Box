@@ -77,6 +77,19 @@ test('records plan, tool traces, and final result from task events', () => {
   })
 
   const state = store.getState()
+  assert.deepEqual(
+    state.events.map((event) => event.type),
+    [
+      'plan.generated',
+      'skill.selected',
+      'tool.call.started',
+      'tool.call.finished',
+      'script.started',
+      'script.output',
+      'script.finished',
+      'task.completed',
+    ]
+  )
   assert.deepEqual(state.plan, ['Read package.json', 'Summarize findings'])
   assert.equal(state.selectedSkills[0], 'repo-summary')
   assert.equal(state.toolCalls[0]?.name, 'filesystem.read_file')
@@ -86,6 +99,25 @@ test('records plan, tool traces, and final result from task events', () => {
   assert.equal(state.logs.some((entry) => entry.includes('summary-ready')), true)
   assert.equal(state.logs.some((entry) => entry.includes('脚本执行完成')), true)
   assert.equal(state.finalMessage, 'Done')
+})
+
+test('clears task events when reset', () => {
+  const store = createAgentStore()
+
+  store.getState().applyEvent({
+    type: 'task.created',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      prompt: 'Inspect repo',
+    },
+  })
+
+  assert.equal(store.getState().events.length, 1)
+
+  store.getState().reset()
+
+  assert.equal(store.getState().events.length, 0)
 })
 
 test('surfaces pending approval requests', () => {
@@ -103,6 +135,62 @@ test('surfaces pending approval requests', () => {
   })
 
   assert.equal(store.getState().approval?.title, 'Call filesystem.read_file')
+})
+
+test('returns to running when work resumes after approval', () => {
+  const store = createAgentStore()
+
+  store.getState().applyEvent({
+    type: 'approval.required',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      actionId: 'step-2',
+      title: 'Call filesystem.read_file',
+      details: 'Read package.json',
+    },
+  })
+  store.getState().applyEvent({
+    type: 'tool.call.started',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      name: 'filesystem.read_file',
+    },
+  })
+
+  assert.equal(store.getState().status, 'running')
+  assert.equal(store.getState().approval, null)
+})
+
+test('marks the task rejected from rejection events', () => {
+  const store = createAgentStore()
+
+  store.getState().applyEvent({
+    type: 'approval.required',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      actionId: 'step-2',
+      title: 'Call filesystem.read_file',
+      details: 'Read package.json',
+    },
+  })
+  store.getState().applyEvent({
+    type: 'task.rejected',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      message: '用户拒绝了外部操作。',
+    },
+  })
+
+  assert.equal(store.getState().status, 'rejected')
+  assert.equal(store.getState().approval, null)
+  assert.equal(
+    store.getState().logs.some((entry) => entry.includes('用户拒绝了外部操作')),
+    true
+  )
 })
 
 test('tracks step lifecycle entries in execution logs', () => {

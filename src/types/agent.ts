@@ -62,6 +62,7 @@ export interface AgentTaskEvent {
     | 'approval.required'
     | 'step.completed'
     | 'task.completed'
+    | 'task.rejected'
     | 'task.failed'
   taskId: string
   timestamp: number

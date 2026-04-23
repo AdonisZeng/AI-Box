@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, MessageSquareText } from 'lucide-react'
 import { useAgentStore, useMCPStore, useSettingsStore } from '@/lib/store'
-import { TaskInputPanel } from './agent/TaskInputPanel'
-import { ExecutionModeToggle } from './agent/ExecutionModeToggle'
-import { PlanTimeline } from './agent/PlanTimeline'
-import { SkillPanel } from './agent/SkillPanel'
-import { ToolTracePanel } from './agent/ToolTracePanel'
-import { ExecutionLogPanel } from './agent/ExecutionLogPanel'
-import { ResultPanel } from './agent/ResultPanel'
+import { getStageWorkspaceBackdropClass } from '@/components/chat/stage-shell-styles'
+import { AgentChatTimeline } from './agent/AgentChatTimeline'
+import { AgentComposer } from './agent/AgentComposer'
+import { AgentContextRail } from './agent/AgentContextRail'
+import { buildAgentConversationItems } from './agent/agent-conversation'
 
 export function AgentWorkspace() {
   const [prompt, setPrompt] = useState('')
@@ -15,11 +13,10 @@ export function AgentWorkspace() {
   const [isStarting, setIsStarting] = useState(false)
   const currentTaskId = useAgentStore((state) => state.currentTaskId)
   const status = useAgentStore((state) => state.status)
+  const events = useAgentStore((state) => state.events)
   const plan = useAgentStore((state) => state.plan)
   const selectedSkills = useAgentStore((state) => state.selectedSkills)
-  const toolCalls = useAgentStore((state) => state.toolCalls)
   const logs = useAgentStore((state) => state.logs)
-  const finalMessage = useAgentStore((state) => state.finalMessage)
   const approval = useAgentStore((state) => state.approval)
   const applyEvent = useAgentStore((state) => state.applyEvent)
   const reset = useAgentStore((state) => state.reset)
@@ -38,18 +35,26 @@ export function AgentWorkspace() {
     () => serverConfigs.filter((server) => server.connected).length,
     [serverConfigs]
   )
+  const conversationItems = useMemo(
+    () => buildAgentConversationItems({ events, approval }),
+    [approval, events]
+  )
+
   const isBusy = isStarting || status === 'running' || status === 'awaiting-approval'
+  const providerName = provider?.name ?? '未配置 Provider'
 
   const handleStart = async () => {
-    if (!provider || !prompt.trim() || isBusy) {
+    const taskPrompt = prompt.trim()
+    if (!provider || !taskPrompt || isBusy) {
       return
     }
 
     reset()
+    setPrompt('')
     setIsStarting(true)
     try {
       await window.electronAPI.agent.startTask({
-        prompt: prompt.trim(),
+        prompt: taskPrompt,
         mode,
         provider,
         mcpServers: serverConfigs,
@@ -59,57 +64,96 @@ export function AgentWorkspace() {
     }
   }
 
+  const handleCancel = async () => {
+    if (!currentTaskId) {
+      return
+    }
+
+    await window.electronAPI.agent.cancelTask(currentTaskId)
+  }
+
+  const handleApprove = async (actionId: string) => {
+    if (!currentTaskId) {
+      return
+    }
+
+    await window.electronAPI.agent.approveAction(currentTaskId, actionId)
+  }
+
+  const handleReject = async (actionId: string) => {
+    if (!currentTaskId) {
+      return
+    }
+
+    await window.electronAPI.agent.rejectAction(currentTaskId, actionId)
+  }
+
   return (
-    <div className="flex h-full flex-col bg-[#1e1e1e]">
-      <div className="h-10 bg-[#2d2d2d] border-b border-[#3c3c3c] flex items-center px-3 gap-1">
-        <div className="px-3 py-1 bg-[#1e1e1e] text-[#ccc] text-xs rounded-t">
-          Agent
-        </div>
-        <div className="px-3 py-1 text-[#666] text-xs rounded-t">
-          MCP + Skill Runtime
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_left,_rgba(74,158,255,0.12),_transparent_28%),linear-gradient(180deg,_#1e1e1e_0%,_#181818_100%)]">
-        <div className="mx-auto grid max-w-7xl gap-4 p-4 xl:grid-cols-[1.22fr_0.78fr]">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 rounded-2xl border border-[#3c3c3c] bg-[#252526]/95 px-4 py-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#4a9eff]/12">
-                <Bot size={22} className="text-[#6fb2ff]" />
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-[#f2f2f2]">
-                  通用助手型 Agent
-                </div>
-                <p className="mt-1 text-xs text-[#8b8b8b]">
-                  可自动发现本地 Skill，调用 MCP 工具，并把工具/脚本结果回流给 LLM 继续规划。
-                </p>
-              </div>
+    <div className={getStageWorkspaceBackdropClass()}>
+      <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/70 bg-white/70 shadow-[0_30px_90px_rgba(148,163,184,0.22)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-950/46 dark:shadow-[0_34px_96px_rgba(2,6,23,0.46)]">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200/75 bg-white/70 px-4 py-3 backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/34">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#4a9eff] to-[#2563eb] text-white shadow-lg shadow-blue-500/20">
+              <Bot className="h-5 w-5" />
             </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
+                <MessageSquareText className="h-4 w-4 text-[#4a9eff]" />
+                Agent Chat
+              </div>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                对话中自然展开计划、Skill、MCP 调用和脚本日志
+              </p>
+            </div>
+          </div>
 
-            <TaskInputPanel
+          <div className="hidden items-center gap-3 rounded-full border border-white/80 bg-white/74 px-4 py-1.5 text-xs text-slate-500 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/58 dark:text-slate-400 md:flex">
+            <span>
+              Provider:
+              <span className="ml-1 font-medium text-[#4a9eff]">{providerName}</span>
+            </span>
+            <span className="h-3 w-px bg-slate-200 dark:bg-slate-700" />
+            <span>
+              MCP:
+              <span className="ml-1 font-medium text-slate-900 dark:text-slate-50">
+                {connectedServerCount}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="flex min-h-0 flex-col">
+            <AgentChatTimeline
+              items={conversationItems}
+              status={status}
+              activeTaskId={currentTaskId}
+              onApprove={handleApprove}
+              onReject={handleReject}
+            />
+            <AgentComposer
               value={prompt}
-              providerName={provider?.name ?? '未配置 Provider'}
+              mode={mode}
+              providerName={providerName}
               connectedServerCount={connectedServerCount}
               isBusy={isBusy}
               onChange={setPrompt}
+              onModeChange={setMode}
               onSubmit={handleStart}
+              onCancel={handleCancel}
             />
-            <ExecutionModeToggle mode={mode} onChange={setMode} />
-            <PlanTimeline plan={plan} />
-            <ToolTracePanel toolCalls={toolCalls} />
-            <ExecutionLogPanel logs={logs} />
           </div>
 
-          <div className="space-y-4">
-            <SkillPanel selectedSkills={selectedSkills} />
-            <ResultPanel
-              status={status}
-              finalMessage={finalMessage}
-              approval={approval}
-              activeTaskId={currentTaskId}
-            />
-          </div>
+          <AgentContextRail
+            status={status}
+            mode={mode}
+            providerName={providerName}
+            connectedServerCount={connectedServerCount}
+            plan={plan}
+            selectedSkills={selectedSkills}
+            logs={logs}
+            onModeChange={setMode}
+          />
         </div>
       </div>
     </div>

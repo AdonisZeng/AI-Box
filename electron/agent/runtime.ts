@@ -80,6 +80,9 @@ export class AgentRuntime {
     }
 
     this.deps.sessions.reject(taskId)
+    this.emitEvent(taskId, 'task.rejected', {
+      message: 'Action rejected by user.',
+    })
     return this.deps.sessions.get(taskId) ?? null
   }
 
