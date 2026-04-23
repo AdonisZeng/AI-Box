@@ -125,6 +125,47 @@ test('accepts action field and summary-only finish output from local models', ()
   assert.equal(decision.finalMessage, '你好！我是 AI Box agent planner。')
 })
 
+test('accepts nested next_action finish output from local models', () => {
+  const decision = parsePlannerDecision(`
+    \`\`\`json
+    {
+      "summary": "Responding to user's inquiry about capabilities.",
+      "next_action": {
+        "type": "finish",
+        "content": "你好！我是 AI Box agent planner。"
+      }
+    }
+    \`\`\`
+  `)
+
+  assert.equal(decision.type, 'finish')
+  assert.equal(decision.summary, "Responding to user's inquiry about capabilities.")
+  assert.equal(decision.finalMessage, '你好！我是 AI Box agent planner。')
+})
+
+test('accepts nested action object finish output from local models', () => {
+  const decision = parsePlannerDecision(`
+    {
+      "summary": "用户询问我能做什么。",
+      "plan": [
+        {
+          "content": "回答用户关于能力的询问",
+          "status": "completed"
+        }
+      ],
+      "action": {
+        "type": "finish",
+        "result": "你好！我可以为你提供开发、AI 和项目管理帮助。"
+      }
+    }
+  `)
+
+  assert.equal(decision.type, 'finish')
+  assert.equal(decision.summary, '用户询问我能做什么。')
+  assert.equal(decision.finalMessage, '你好！我可以为你提供开发、AI 和项目管理帮助。')
+  assert.deepEqual(decision.plan, ['[completed] 回答用户关于能力的询问'])
+})
+
 test('uses the injected model caller to produce the next planner decision', async () => {
   const planner = new DefaultPlanner({
     callModel: async (messages) => {

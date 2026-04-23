@@ -76,7 +76,20 @@ function normalizePlan(value: unknown): string[] | undefined {
   }
 
   return value
-    .map((step) => String(step).trim())
+    .map((step) => {
+      if (!isRecord(step)) {
+        return String(step).trim()
+      }
+
+      const content = typeof step.content === 'string' ? step.content.trim() : ''
+      if (content === '') {
+        return ''
+      }
+
+      return typeof step.status === 'string' && step.status.trim() !== ''
+        ? `[${step.status.trim()}] ${content}`
+        : content
+    })
     .filter(Boolean)
 }
 
@@ -145,7 +158,19 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
 }
 
 export function parsePlannerDecision(content: string): PlannerDecision {
-  const raw = JSON.parse(extractJsonBlock(content)) as Record<string, unknown>
+  const parsed = JSON.parse(extractJsonBlock(content)) as Record<string, unknown>
+  const nestedAction = isRecord(parsed.next_action)
+    ? parsed.next_action
+    : isRecord(parsed.action)
+      ? parsed.action
+      : undefined
+  const raw = nestedAction
+    ? {
+        ...nestedAction,
+        summary: nestedAction.summary ?? parsed.summary,
+        plan: nestedAction.plan ?? parsed.plan,
+      }
+    : parsed
   const plan = normalizePlan(raw.plan)
   const decisionType = typeof raw.type === 'string' ? raw.type : raw.action
 
@@ -188,6 +213,10 @@ export function parsePlannerDecision(content: string): PlannerDecision {
       const finalMessage =
         typeof raw.finalMessage === 'string' && raw.finalMessage.trim() !== ''
           ? raw.finalMessage
+          : typeof raw.content === 'string' && raw.content.trim() !== ''
+            ? raw.content
+            : typeof raw.result === 'string' && raw.result.trim() !== ''
+              ? raw.result
           : summary
 
       return {
