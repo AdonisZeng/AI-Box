@@ -1,9 +1,14 @@
 import * as assert from 'node:assert/strict'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { ToolBroker } from './tool-broker.ts'
 
 test('lists tools from injected MCP clients', async () => {
+  const root = process.cwd()
   const broker = new ToolBroker({
+    localRootDir: root,
     clientFactory: () => ({
       connect: async () => undefined,
       getServer: () => ({
@@ -27,8 +32,8 @@ test('lists tools from injected MCP clients', async () => {
     { id: 'fs', name: 'Filesystem', url: 'http://localhost:3001', connected: true, tools: [] },
   ])
 
-  assert.equal(tools.length, 1)
-  assert.equal(tools[0]?.name, 'filesystem.read_file')
+  assert.equal(tools.some((tool) => tool.name === 'local.read_file'), true)
+  assert.equal(tools.some((tool) => tool.name === 'filesystem.read_file'), true)
 })
 
 test('normalizes tool call errors', async () => {
@@ -53,4 +58,19 @@ test('normalizes tool call errors', async () => {
       { path: 'package.json' }
     )
   )
+})
+
+test('dispatches local tools without an MCP server', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ai-box-tool-broker-'))
+  writeFileSync(join(root, 'package.json'), '{"name":"ai-box"}')
+  const broker = new ToolBroker({ localRootDir: root })
+
+  const result = await broker.callTool(null, 'local.read_file', {
+    path: 'package.json',
+  })
+
+  assert.deepEqual(result, {
+    path: 'package.json',
+    content: '{"name":"ai-box"}',
+  })
 })

@@ -431,7 +431,11 @@ export class AgentRuntime {
   private resolveToolServer(
     request: AgentStartTaskRequest,
     toolName: string
-  ): AgentStartTaskRequest['mcpServers'][number] {
+  ): AgentStartTaskRequest['mcpServers'][number] | null {
+    if (toolName.startsWith('local.')) {
+      return null
+    }
+
     const matchingServer = request.mcpServers.find((server) =>
       server.tools.some((tool) => tool.name === toolName)
     )

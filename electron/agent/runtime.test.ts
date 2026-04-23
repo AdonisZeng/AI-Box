@@ -1,7 +1,11 @@
 import * as assert from 'node:assert/strict'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { AgentRuntime } from './runtime.ts'
 import { TaskSessionManager } from './task-session-manager.ts'
+import { ToolBroker } from './tool-broker.ts'
 
 function createRequest(mode: 'auto' | 'confirm-external' = 'auto') {
   return {
@@ -267,6 +271,53 @@ test('resumes the pending action after approval', async () => {
 
   assert.equal(resumed?.status, 'completed')
   assert.equal(resumed?.observations.length, 1)
+})
+
+test('runs local tools without configured MCP servers', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ai-box-runtime-local-tools-'))
+  writeFileSync(join(root, 'package.json'), '{"name":"ai-box"}')
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: new ToolBroker({ localRootDir: root }),
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    planner: {
+      next: async (input) =>
+        input.observations.length === 0
+          ? {
+              type: 'call_tool' as const,
+              toolName: 'local.read_file',
+              arguments: { path: 'package.json' },
+              summary: 'Read local package metadata',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Local package metadata read.',
+            },
+    },
+  })
+
+  const result = await runtime.start({
+    ...createRequest(),
+    mcpServers: [],
+  })
+
+  assert.equal(result.status, 'completed')
+  assert.equal(result.observations[0]?.name, 'local.read_file')
+  assert.deepEqual(result.observations[0]?.data, {
+    result: {
+      path: 'package.json',
+      content: '{"name":"ai-box"}',
+    },
+  })
+  assert.equal(result.loop.transitionReason, null)
 })
 
 test('emits a rejected event when approval is rejected', async () => {
