@@ -2,7 +2,6 @@ import type { AppModuleDefinition } from './types'
 import { agentModule } from './agent'
 import { audioModule } from './audio'
 import { chatModule } from './chat'
-import { mcpModule } from './mcp'
 import { videoModule } from './video'
 
 export const builtInModules: AppModuleDefinition[] = [
@@ -10,5 +9,4 @@ export const builtInModules: AppModuleDefinition[] = [
   agentModule,
   videoModule,
   audioModule,
-  mcpModule,
 ]

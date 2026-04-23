@@ -5,6 +5,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openSettingsWindow: () => ipcRenderer.invoke('open-settings-window'),
   log: (level: string, message: string, ...args: unknown[]) =>
     ipcRenderer.invoke('log-message', level, message, ...args),
+  crypto: {
+    encrypt: (plaintext: string) => ipcRenderer.invoke('encrypt-string', plaintext),
+    decrypt: (encryptedBase64: string) => ipcRenderer.invoke('decrypt-string', encryptedBase64),
+    isAvailable: () => ipcRenderer.invoke('is-encryption-available'),
+  },
   agent: {
     startTask: (request: unknown) => ipcRenderer.invoke('agent:start-task', request),
     getTaskState: (taskId: string) => ipcRenderer.invoke('agent:get-task-state', taskId),

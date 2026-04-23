@@ -1,4 +1,16 @@
-import type { ProviderConfig, ProviderType } from '../../types/providers'
+export type ProviderType = 'lmstudio' | 'openai' | 'anthropic' | 'custom' | 'minimax'
+
+export interface ProviderConfig {
+  id: ProviderType
+  name: string
+  baseURL: string
+  apiKey: string
+  model: string
+  apiType: 'openai' | 'anthropic' | 'custom'
+  enabled: boolean
+}
+
+const providerTypes: ProviderType[] = ['lmstudio', 'openai', 'anthropic', 'custom', 'minimax']
 
 export function resolveChatProviderId(activeProvider: ProviderType): ProviderType {
   return activeProvider
@@ -19,8 +31,6 @@ interface PersistedSettingsSnapshot {
   activeProvider?: ProviderType
   providers?: ProviderConfig[]
 }
-
-const providerTypes: ProviderType[] = ['lmstudio', 'openai', 'anthropic', 'custom']
 
 export function resolveLatestChatProvider({
   activeProvider,

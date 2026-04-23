@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import type { ChatOptions, Message } from '@/types/providers'
+import type { ChatOptions, Message, ProviderConfig, LLMProvider } from './types'
 import { BaseProvider } from './base'
 
 export class OpenAIProvider extends BaseProvider {
@@ -53,4 +53,29 @@ export class OpenAIProvider extends BaseProvider {
   getDefaultModel(): string {
     return 'gpt-4o'
   }
+}
+
+export const openaiDefinition = {
+  id: 'openai',
+  name: 'OpenAI',
+  getDefaultConfig(): ProviderConfig {
+    return {
+      id: 'openai',
+      name: 'OpenAI',
+      baseURL: 'https://api.openai.com/v1',
+      apiKey: '',
+      model: 'gpt-4o',
+      apiType: 'openai',
+      enabled: true,
+    }
+  },
+  validateConfig(config: ProviderConfig): string | null {
+    if (!config.enabled) {
+      return 'OpenAI 当前已禁用，请先在设置中启用后再试。'
+    }
+    return config.apiKey.trim() ? null : 'OpenAI 尚未配置 API Key，请先在设置中补充后再试。'
+  },
+  createProvider(config: ProviderConfig): LLMProvider | null {
+    return new OpenAIProvider(config.apiKey.trim(), config.baseURL, config.model)
+  },
 }

@@ -1,4 +1,4 @@
-import type { APICompatibility, ChatOptions, Message } from '@/types/providers'
+import type { APICompatibility, ChatOptions, Message, ProviderConfig, LLMProvider } from './types'
 import { BaseProvider } from './base'
 
 export class CustomProvider extends BaseProvider {
@@ -210,4 +210,29 @@ export class CustomProvider extends BaseProvider {
   private resolveAnthropicBaseURL(baseURL: string): string {
     return baseURL.endsWith('/v1') ? baseURL : `${baseURL}/v1`
   }
+}
+
+export const customDefinition = {
+  id: 'custom',
+  name: '自定义',
+  getDefaultConfig(): ProviderConfig {
+    return {
+      id: 'custom',
+      name: '自定义',
+      baseURL: '',
+      apiKey: '',
+      model: '',
+      apiType: 'openai',
+      enabled: false,
+    }
+  },
+  validateConfig(config: ProviderConfig): string | null {
+    if (!config.enabled) {
+      return '自定义 Provider 当前已禁用，请先在设置中启用后再试。'
+    }
+    return config.baseURL.trim() ? null : '自定义 Provider 尚未配置基地址，请先在设置中补充后再试。'
+  },
+  createProvider(config: ProviderConfig): LLMProvider | null {
+    return new CustomProvider(config.baseURL.trim(), config.apiType, config.apiKey.trim(), config.model)
+  },
 }

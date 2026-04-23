@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, safeStorage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAgentIpc } from './agent/ipc'
@@ -196,6 +196,30 @@ app.whenReady().then(() => {
   ipcMain.handle('open-settings-window', () => {
     logger.info('IPC open-settings-window 被调用')
     createSettingsWindow()
+  })
+
+  ipcMain.handle('encrypt-string', (_, plaintext: string) => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return null
+    }
+    const encrypted = safeStorage.encryptString(plaintext)
+    return encrypted.toString('base64')
+  })
+
+  ipcMain.handle('decrypt-string', (_, encryptedBase64: string) => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return null
+    }
+    try {
+      const buffer = Buffer.from(encryptedBase64, 'base64')
+      return safeStorage.decryptString(buffer)
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle('is-encryption-available', () => {
+    return safeStorage.isEncryptionAvailable()
   })
 
   ipcMain.handle('log-message', (_, level: string, message: string, ...args: unknown[]) => {

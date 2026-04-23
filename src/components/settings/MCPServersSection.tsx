@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useMCPStore } from '@/lib/store/mcp'
 import { cn } from '@/lib/utils'
 
-export function MCPWorkspace() {
+export function MCPServersSection() {
   const { serverConfigs, addServer, removeServer, connectServer, disconnectServer } =
     useMCPStore()
   const [showAddModal, setShowAddModal] = useState(false)
@@ -34,18 +34,24 @@ export function MCPWorkspace() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Tab Bar */}
-      <div className="h-10 bg-[#2d2d2d] border-b border-[#3c3c3c] flex items-center justify-between px-3">
-        <div className="flex items-center gap-1">
-          <div className="px-3 py-1 bg-[#1e1e1e] text-[#ccc] text-xs rounded-t">
-            MCP 管理
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between rounded-xl border border-[#1E293B] bg-[#1E293B]/40 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#1E293B] border border-[#334155] flex items-center justify-center">
+            <Bot size={18} className="text-[#4a9eff]" />
+          </div>
+          <div>
+            <div className="text-sm font-medium text-[#F8FAFC]">MCP 服务器</div>
+            <div className="text-xs text-[#64748b]">
+              {serverConfigs.filter((s) => s.connected).length} / {serverConfigs.length} 个已连接
+            </div>
           </div>
         </div>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-xs gap-1"
+          className="h-8 text-xs gap-1 text-[#ccc] hover:text-white hover:bg-[#334155]"
           onClick={() => setShowAddModal(true)}
         >
           <Plus size={14} />
@@ -54,11 +60,11 @@ export function MCPWorkspace() {
       </div>
 
       {/* Server List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="space-y-3">
         {serverConfigs.map((server) => (
           <div
             key={server.id}
-            className="bg-[#2d2d2d] rounded-lg p-4 border border-[#3c3c3c]"
+            className="rounded-xl border border-[#334155] bg-[#1E293B]/60 p-4 transition-all duration-200"
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -75,7 +81,9 @@ export function MCPWorkspace() {
                   onClick={() => handleToggleConnection(server.id, server.connected)}
                   className={cn(
                     'p-1.5 rounded hover:bg-[#3c3c3c] transition-colors',
-                    server.connected ? 'text-green-500 hover:text-green-400' : 'text-[#666] hover:text-[#aaa]'
+                    server.connected
+                      ? 'text-green-500 hover:text-green-400'
+                      : 'text-[#666] hover:text-[#aaa]'
                   )}
                   title={server.connected ? '断开连接' : '连接'}
                 >
@@ -119,7 +127,7 @@ export function MCPWorkspace() {
         ))}
 
         {serverConfigs.length === 0 && (
-          <div className="text-center py-12">
+          <div className="text-center py-12 rounded-xl border border-dashed border-[#334155] bg-[#0F172A]/40">
             <Bot size={32} className="text-[#3c3c3c] mx-auto mb-3" />
             <p className="text-[#666] text-sm">暂无 MCP 服务器</p>
             <p className="text-[#555] text-xs mt-1">点击上方按钮添加服务器</p>

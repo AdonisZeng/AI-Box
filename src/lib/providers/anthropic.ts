@@ -1,4 +1,4 @@
-import type { ChatOptions, Message } from '@/types/providers'
+import type { ChatOptions, Message, ProviderConfig, LLMProvider } from './types'
 import { BaseProvider } from './base'
 
 export class AnthropicProvider extends BaseProvider {
@@ -104,4 +104,29 @@ export class AnthropicProvider extends BaseProvider {
   getDefaultModel(): string {
     return 'claude-3-5-sonnet-20241022'
   }
+}
+
+export const anthropicDefinition = {
+  id: 'anthropic',
+  name: 'Anthropic',
+  getDefaultConfig(): ProviderConfig {
+    return {
+      id: 'anthropic',
+      name: 'Anthropic',
+      baseURL: 'https://api.anthropic.com',
+      apiKey: '',
+      model: 'claude-3-5-sonnet-20241022',
+      apiType: 'anthropic',
+      enabled: true,
+    }
+  },
+  validateConfig(config: ProviderConfig): string | null {
+    if (!config.enabled) {
+      return 'Anthropic 当前已禁用，请先在设置中启用后再试。'
+    }
+    return config.apiKey.trim() ? null : 'Anthropic 尚未配置 API Key，请先在设置中补充后再试。'
+  },
+  createProvider(config: ProviderConfig): LLMProvider | null {
+    return new AnthropicProvider(config.apiKey.trim(), config.baseURL, config.model)
+  },
 }

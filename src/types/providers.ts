@@ -1,47 +1,21 @@
-export type ProviderType = 'lmstudio' | 'openai' | 'anthropic' | 'custom'
-
-export type APICompatibility = 'openai' | 'anthropic' | 'custom'
-
-export interface ProviderConfig {
-  id: ProviderType
-  name: string
-  baseURL: string
-  apiKey: string
-  model: string
-  apiType: APICompatibility
-  enabled: boolean
-}
-
-export interface Message {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  thinking?: string
-  thinkingExpanded?: boolean
-  timestamp: number
-}
+// Provider-related types are now defined in src/lib/providers/types.ts
+// and re-exported from src/lib/providers/index.ts
+// Re-export here for backward compatibility
+export type {
+  ProviderType,
+  ProviderConfig,
+  MiniMaxSubModelConfig,
+  APICompatibility,
+  LLMProvider,
+  Message,
+  StreamChunk,
+  ChatOptions,
+} from '@/lib/providers'
 
 export interface ChatSession {
   id: string
   title: string
-  messages: Message[]
+  messages: import('@/lib/providers').Message[]
   createdAt: number
   updatedAt: number
-}
-
-export interface StreamChunk {
-  content: string
-  done: boolean
-  reasoning_content?: string
-}
-
-export interface ChatOptions {
-  onChunk?: (chunk: StreamChunk) => void
-  signal?: AbortSignal
-}
-
-export interface LLMProvider {
-  name: string
-  chat(messages: Message[], options?: ChatOptions): Promise<string>
-  getDefaultModel(): string
 }

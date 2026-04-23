@@ -1,4 +1,4 @@
-import type { ChatOptions, Message } from '@/types/providers'
+import type { ChatOptions, Message, ProviderConfig, LLMProvider } from './types'
 import { BaseProvider } from './base'
 
 export interface LMStudioModel {
@@ -132,4 +132,29 @@ export class LMStudioProvider extends BaseProvider {
       return []
     }
   }
+}
+
+export const lmstudioDefinition = {
+  id: 'lmstudio',
+  name: 'LMStudio',
+  getDefaultConfig(): ProviderConfig {
+    return {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: '',
+      apiType: 'openai',
+      enabled: true,
+    }
+  },
+  validateConfig(config: ProviderConfig): string | null {
+    if (!config.enabled) {
+      return 'LMStudio 当前已禁用，请先在设置中启用后再试。'
+    }
+    return null
+  },
+  createProvider(config: ProviderConfig): LLMProvider | null {
+    return new LMStudioProvider(config.baseURL || 'http://localhost:1234/v1', config.model)
+  },
 }

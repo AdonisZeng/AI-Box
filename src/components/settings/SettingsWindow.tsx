@@ -6,6 +6,7 @@ import { useSettingsStore } from '@/lib/store'
 import { X } from 'lucide-react'
 import { ModuleSettingsSection } from '@/components/settings/ModuleSettingsSection'
 import { ProviderSettingsSection } from '@/components/settings/ProviderSettingsSection'
+import { MCPServersSection } from '@/components/settings/MCPServersSection'
 
 const tabClass = (isActive: boolean) =>
   cn(
@@ -17,6 +18,7 @@ const tabClass = (isActive: boolean) =>
 
 const settingsTabs = [
   { id: 'provider', label: '提供商', Component: ProviderSettingsSection },
+  { id: 'mcp', label: 'MCP', Component: MCPServersSection },
   { id: 'modules', label: '模块', Component: ModuleSettingsSection },
 ] as const
 
