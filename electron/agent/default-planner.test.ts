@@ -112,6 +112,19 @@ test('parses JSON planner output into a normalized action', () => {
   assert.deepEqual(decision.plan, ['Inspect package.json', 'Summarize findings'])
 })
 
+test('accepts action field and summary-only finish output from local models', () => {
+  const decision = parsePlannerDecision(`
+    {
+      "action": "finish",
+      "summary": "你好！我是 AI Box agent planner。"
+    }
+  `)
+
+  assert.equal(decision.type, 'finish')
+  assert.equal(decision.summary, '你好！我是 AI Box agent planner。')
+  assert.equal(decision.finalMessage, '你好！我是 AI Box agent planner。')
+})
+
 test('uses the injected model caller to produce the next planner decision', async () => {
   const planner = new DefaultPlanner({
     callModel: async (messages) => {

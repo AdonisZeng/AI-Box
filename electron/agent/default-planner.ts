@@ -147,8 +147,9 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
 export function parsePlannerDecision(content: string): PlannerDecision {
   const raw = JSON.parse(extractJsonBlock(content)) as Record<string, unknown>
   const plan = normalizePlan(raw.plan)
+  const decisionType = typeof raw.type === 'string' ? raw.type : raw.action
 
-  switch (raw.type) {
+  switch (decisionType) {
     case 'call_tool':
       return {
         type: 'call_tool',
@@ -182,16 +183,23 @@ export function parsePlannerDecision(content: string): PlannerDecision {
       }
     }
 
-    case 'finish':
+    case 'finish': {
+      const summary = requireString(raw.summary, 'summary')
+      const finalMessage =
+        typeof raw.finalMessage === 'string' && raw.finalMessage.trim() !== ''
+          ? raw.finalMessage
+          : summary
+
       return {
         type: 'finish',
-        summary: requireString(raw.summary, 'summary'),
-        finalMessage: requireString(raw.finalMessage, 'finalMessage'),
+        summary,
+        finalMessage,
         plan,
       }
+    }
 
     default:
-      throw new Error('Planner response must include a supported type field')
+      throw new Error('Planner response must include a supported type or action field')
   }
 }
 

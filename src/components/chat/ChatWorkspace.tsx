@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn, parseThinking } from '@/lib/utils'
-import { resolveChatProviderId } from '@/lib/chat/provider-resolution'
+import { resolveChatProviderId, resolveLatestChatProvider } from '@/lib/chat/provider-resolution'
 import {
   getThinkingBodyClass,
   getThinkingPanelClass,
@@ -44,7 +44,13 @@ function useLocalStorageSync(_storeKey: string) {
     }
 
     window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
+    window.addEventListener('focus', handleStorageChange)
+    document.addEventListener('visibilitychange', handleStorageChange)
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('focus', handleStorageChange)
+      document.removeEventListener('visibilitychange', handleStorageChange)
+    }
   }, [])
 
   return storageVersion
@@ -162,11 +168,16 @@ export function ChatWorkspace() {
   const handleSend = async () => {
     if (!input.trim() || isGenerating || !activeSession) return
 
-    const currentProviderConfig = getProviderConfig(chatProviderId)
+    const latestProvider = resolveLatestChatProvider({
+      activeProvider,
+      providers,
+      persistedSettings: window.localStorage.getItem('ai-box-settings'),
+    })
+    const currentProviderConfig = latestProvider.providerConfig ?? getProviderConfig(chatProviderId)
     if (!currentProviderConfig) {
       appendAssistantMessage(
         activeSession.id,
-        `错误: 当前激活的 Provider "${chatProviderId}" 不存在，请检查设置。`
+        `错误: 当前激活的 Provider "${latestProvider.providerId}" 不存在，请检查设置。`
       )
       return
     }
