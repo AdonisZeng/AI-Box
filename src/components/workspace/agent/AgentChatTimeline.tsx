@@ -77,7 +77,7 @@ export function AgentChatTimeline({
 
 function AgentWelcomeCard() {
   return (
-    <div className="mx-auto mt-6 max-w-2xl rounded-[28px] border border-white/80 bg-white/76 p-6 text-center shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/62 dark:shadow-[0_28px_70px_rgba(2,6,23,0.34)]">
+    <div className="mx-auto mt-6 max-w-2xl rounded-[28px] border border-white/80 bg-white/75 p-6 text-center shadow-[0_24px_60px_rgba(148,163,184,0.18)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/60 dark:shadow-[0_28px_70px_rgba(2,6,23,0.34)]">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[22px] bg-gradient-to-br from-[#4a9eff] to-[#2563eb] text-white shadow-lg shadow-blue-500/25">
         <Bot className="h-7 w-7" />
       </div>
@@ -118,8 +118,8 @@ function AssistantMessage({
         className={cn(
           'max-w-[min(44rem,82%)] rounded-[24px] rounded-tl-[12px] border px-4 py-3 text-sm leading-7 shadow-[0_18px_44px_rgba(148,163,184,0.16)] backdrop-blur-xl',
           tone === 'error'
-            ? 'border-red-200/80 bg-red-50/84 text-red-950 dark:border-red-900/70 dark:bg-red-950/42 dark:text-red-100'
-            : 'border-slate-200/80 bg-white/86 text-slate-800 dark:border-slate-700/80 dark:bg-slate-900/72 dark:text-slate-100'
+            ? 'border-red-200/80 bg-red-50/80 text-red-950 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-100'
+            : 'border-slate-200/80 bg-white/90 text-slate-800 dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-100'
         )}
       >
         <ReactMarkdown
@@ -167,7 +167,7 @@ function AgentThinkingRow() {
   return (
     <div className="flex items-start gap-3">
       <AssistantAvatar tone="success" subtle />
-      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/76 px-4 py-2 text-xs text-slate-500 shadow-sm backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
+      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/75 px-4 py-2 text-xs text-slate-500 shadow-sm backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Agent 正在规划下一步...
       </div>
@@ -187,8 +187,8 @@ function AssistantAvatar({
       className={cn(
         'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-lg',
         tone === 'error'
-          ? 'bg-gradient-to-br from-red-500 to-red-700 shadow-red-500/18'
-          : 'bg-gradient-to-br from-[#4a9eff] to-[#2563eb] shadow-blue-500/18',
+          ? 'bg-gradient-to-br from-red-500 to-red-700 shadow-red-500/20'
+          : 'bg-gradient-to-br from-[#4a9eff] to-[#2563eb] shadow-blue-500/20',
         subtle ? 'opacity-82' : ''
       )}
     >

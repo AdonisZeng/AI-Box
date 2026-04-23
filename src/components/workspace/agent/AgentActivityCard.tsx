@@ -33,9 +33,9 @@ interface AgentApprovalCardProps {
 export function AgentActivityCard({ item }: AgentActivityCardProps) {
   if (item.type === 'skill') {
     return (
-      <article className="rounded-[22px] border border-sky-200/80 bg-sky-50/82 px-4 py-3 shadow-[0_14px_34px_rgba(14,165,233,0.12)] backdrop-blur-xl dark:border-sky-900/70 dark:bg-sky-950/42">
+      <article className="rounded-[22px] border border-sky-200/80 bg-sky-50/80 px-4 py-3 shadow-[0_14px_34px_rgba(14,165,233,0.12)] backdrop-blur-xl dark:border-sky-900/70 dark:bg-sky-950/40">
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-sky-500/12 text-sky-600 dark:text-sky-300">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-300">
             <Sparkles className="h-4 w-4" />
           </div>
           <div className="min-w-0">
@@ -61,11 +61,11 @@ export function AgentActivityCard({ item }: AgentActivityCardProps) {
   return (
     <details
       open
-      className="group overflow-hidden rounded-[22px] border border-slate-200/80 bg-white/82 shadow-[0_18px_44px_rgba(148,163,184,0.16)] backdrop-blur-xl dark:border-slate-700/78 dark:bg-slate-900/68 dark:shadow-[0_20px_48px_rgba(2,6,23,0.34)]"
+      className="group overflow-hidden rounded-[22px] border border-slate-200/80 bg-white/80 shadow-[0_18px_44px_rgba(148,163,184,0.16)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/70 dark:shadow-[0_20px_48px_rgba(2,6,23,0.34)]"
     >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#4a9eff]/12 text-[#4a9eff]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#4a9eff]/10 text-[#4a9eff]">
             {icon}
           </div>
           <div className="min-w-0">
@@ -101,16 +101,16 @@ export function AgentApprovalCard({
   onReject,
 }: AgentApprovalCardProps) {
   return (
-    <article className="rounded-[24px] border border-amber-300/80 bg-amber-50/90 p-4 shadow-[0_18px_44px_rgba(245,158,11,0.16)] backdrop-blur-xl dark:border-amber-800/70 dark:bg-amber-950/42">
+    <article className="rounded-[24px] border border-amber-300/80 bg-amber-50/90 p-4 shadow-[0_18px_44px_rgba(245,158,11,0.16)] backdrop-blur-xl dark:border-amber-800/70 dark:bg-amber-950/40">
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500/14 text-amber-700 dark:text-amber-300">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-700 dark:text-amber-300">
           <ShieldAlert className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-amber-950 dark:text-amber-100">
             {item.title}
           </div>
-          <p className="mt-2 text-sm leading-6 text-amber-900/78 dark:text-amber-100/78">
+          <p className="mt-2 text-sm leading-6 text-amber-900/80 dark:text-amber-100/80">
             {item.details}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -141,9 +141,9 @@ function PlanBody({ steps }: { steps: string[] }) {
       {steps.map((step, index) => (
         <li
           key={`${step}-${index}`}
-          className="flex gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-950/42"
+          className="flex gap-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 dark:border-slate-700/70 dark:bg-slate-950/40"
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#4a9eff]/14 text-xs font-semibold text-[#4a9eff]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#4a9eff]/10 text-xs font-semibold text-[#4a9eff]">
             {index + 1}
           </span>
           <span className="text-sm leading-6 text-slate-700 dark:text-slate-200">
@@ -172,7 +172,7 @@ function ScriptBody({ item }: { item: Extract<ActivityItem, { type: 'script' }> 
   return (
     <div className="space-y-3">
       {item.command || item.runner ? (
-        <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-2 text-xs text-slate-500 dark:border-slate-700/70 dark:bg-slate-950/42 dark:text-slate-400">
+        <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-2 text-xs text-slate-500 dark:border-slate-700/70 dark:bg-slate-950/40 dark:text-slate-400">
           {item.runner ? <span>运行时：{item.runner}</span> : null}
           {item.runner && item.command ? <span className="mx-2">/</span> : null}
           {item.command ? <span>命令：{item.command}</span> : null}
@@ -202,8 +202,8 @@ function JsonBlock({
       <pre
         className={`max-h-72 overflow-x-auto rounded-2xl border px-4 py-3 text-xs leading-6 shadow-inner ${
           accent === 'blue'
-            ? 'border-sky-200/70 bg-sky-50/80 text-sky-900 dark:border-sky-900/70 dark:bg-sky-950/42 dark:text-sky-100'
-            : 'border-slate-200/70 bg-slate-50/80 text-slate-700 dark:border-slate-700/70 dark:bg-slate-950/42 dark:text-slate-200'
+            ? 'border-sky-200/70 bg-sky-50/80 text-sky-900 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-100'
+            : 'border-slate-200/70 bg-slate-50/80 text-slate-700 dark:border-slate-700/70 dark:bg-slate-950/40 dark:text-slate-200'
         }`}
       >
         {stringifyValue(value)}

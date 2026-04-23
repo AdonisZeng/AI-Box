@@ -11,6 +11,7 @@ import { RunnerManager } from './agent/runner-manager'
 import { ApprovalGate } from './agent/approval-gate'
 import { DefaultPlanner } from './agent/default-planner'
 import { logger } from './logger'
+import { resolveAppIconPath } from './app-icon'
 import { createProvider } from '../src/lib/providers/index'
 
 let settingsWindow: BrowserWindow | null = null
@@ -53,6 +54,11 @@ function createWindow(): void {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    icon: resolveAppIconPath({
+      isDev: is.dev,
+      cwd: process.cwd(),
+      appPath: app.getAppPath(),
+    }),
     show: false,
     autoHideMenuBar: false,
     webPreferences: {
@@ -98,6 +104,11 @@ function createSettingsWindow(): void {
     height: 640,
     minWidth: 400,
     minHeight: 500,
+    icon: resolveAppIconPath({
+      isDev: is.dev,
+      cwd: process.cwd(),
+      appPath: app.getAppPath(),
+    }),
     show: false,
     autoHideMenuBar: true,
     parent: BrowserWindow.getAllWindows()[0] || undefined,

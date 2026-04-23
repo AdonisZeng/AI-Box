@@ -90,8 +90,8 @@ export function AgentWorkspace() {
 
   return (
     <div className={getStageWorkspaceBackdropClass()}>
-      <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/70 bg-white/70 shadow-[0_30px_90px_rgba(148,163,184,0.22)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-950/46 dark:shadow-[0_34px_96px_rgba(2,6,23,0.46)]">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200/75 bg-white/70 px-4 py-3 backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/34">
+      <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-col overflow-hidden rounded-[30px] border border-white/70 bg-white/70 shadow-[0_30px_90px_rgba(148,163,184,0.22)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-950/50 dark:shadow-[0_34px_96px_rgba(2,6,23,0.46)]">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200/75 bg-white/70 px-4 py-3 backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/40">
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#4a9eff] to-[#2563eb] text-white shadow-lg shadow-blue-500/20">
               <Bot className="h-5 w-5" />
@@ -107,7 +107,7 @@ export function AgentWorkspace() {
             </div>
           </div>
 
-          <div className="hidden items-center gap-3 rounded-full border border-white/80 bg-white/74 px-4 py-1.5 text-xs text-slate-500 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/58 dark:text-slate-400 md:flex">
+          <div className="hidden items-center gap-3 rounded-full border border-white/80 bg-white/75 px-4 py-1.5 text-xs text-slate-500 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-400 md:flex">
             <span>
               Provider:
               <span className="ml-1 font-medium text-[#4a9eff]">{providerName}</span>

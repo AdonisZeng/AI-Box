@@ -39,7 +39,7 @@ export function AgentContextRail({
   onModeChange,
 }: AgentContextRailProps) {
   return (
-    <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto border-t border-slate-200/75 bg-white/46 p-4 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-950/22 xl:border-l xl:border-t-0">
+    <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto border-t border-slate-200/75 bg-white/50 p-4 backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-950/20 xl:border-l xl:border-t-0">
       <RailCard>
         <div className="flex items-center justify-between gap-3">
           <RailTitle icon={<Activity className="h-4 w-4" />} label="运行状态" />
@@ -65,8 +65,8 @@ export function AgentContextRail({
                 className={cn(
                   'rounded-2xl border px-3 py-2 text-left text-xs transition',
                   active
-                    ? 'border-[#4a9eff]/70 bg-[#4a9eff]/12 text-slate-900 shadow-[0_0_0_1px_rgba(74,158,255,0.14)] dark:text-slate-50'
-                    : 'border-slate-200/80 bg-white/54 text-slate-500 hover:border-slate-300 hover:text-slate-800 dark:border-slate-700/70 dark:bg-slate-900/42 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-100'
+                    ? 'border-[#4a9eff]/70 bg-[#4a9eff]/10 text-slate-900 shadow-[0_0_0_1px_rgba(74,158,255,0.14)] dark:text-slate-50'
+                    : 'border-slate-200/80 bg-white/60 text-slate-500 hover:border-slate-300 hover:text-slate-800 dark:border-slate-700/70 dark:bg-slate-900/40 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-100'
                 )}
               >
                 <div className="font-semibold">
@@ -90,7 +90,7 @@ export function AgentContextRail({
             {plan.map((step, index) => (
               <li
                 key={`${step}-${index}`}
-                className="flex gap-2 rounded-2xl border border-slate-200/70 bg-white/54 px-3 py-2 text-xs leading-5 text-slate-600 dark:border-slate-700/70 dark:bg-slate-900/42 dark:text-slate-300"
+                className="flex gap-2 rounded-2xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs leading-5 text-slate-600 dark:border-slate-700/70 dark:bg-slate-900/40 dark:text-slate-300"
               >
                 <span className="font-semibold text-[#4a9eff]">{index + 1}.</span>
                 <span>{step}</span>
@@ -109,7 +109,7 @@ export function AgentContextRail({
             {selectedSkills.map((skill, index) => (
               <span
                 key={`${skill}-${index}`}
-                className="rounded-full border border-sky-200/80 bg-sky-50/80 px-3 py-1 text-xs font-medium text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/42 dark:text-sky-200"
+                className="rounded-full border border-sky-200/80 bg-sky-50/80 px-3 py-1 text-xs font-medium text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200"
               >
                 {skill}
               </span>
@@ -140,7 +140,7 @@ function RailCard({
   return (
     <section
       className={cn(
-        'rounded-[22px] border border-white/76 bg-white/68 p-4 shadow-[0_14px_34px_rgba(148,163,184,0.12)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/48',
+        'rounded-[22px] border border-white/75 bg-white/70 p-4 shadow-[0_14px_34px_rgba(148,163,184,0.12)] backdrop-blur-xl dark:border-slate-700/70 dark:bg-slate-900/50',
         className
       )}
     >
@@ -160,7 +160,7 @@ function RailTitle({ icon, label }: { icon: ReactNode; label: string }) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white/54 px-3 py-2 text-xs dark:border-slate-700/70 dark:bg-slate-900/42">
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white/60 px-3 py-2 text-xs dark:border-slate-700/70 dark:bg-slate-900/40">
       <span className="text-slate-400">{label}</span>
       <span className="truncate font-medium text-slate-700 dark:text-slate-200">
         {value}
@@ -171,7 +171,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 function EmptyRailText({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-3 rounded-2xl border border-dashed border-slate-200/80 bg-white/42 px-3 py-3 text-xs leading-5 text-slate-400 dark:border-slate-700/70 dark:bg-slate-900/32">
+    <p className="mt-3 rounded-2xl border border-dashed border-slate-200/80 bg-white/40 px-3 py-3 text-xs leading-5 text-slate-400 dark:border-slate-700/70 dark:bg-slate-900/30">
       {children}
     </p>
   )

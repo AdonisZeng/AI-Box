@@ -58,6 +58,7 @@
       "output": "release"
     },
     "win": {
+      "icon": "electron/assets/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -70,7 +71,8 @@
       "allowToChangeInstallationDirectory": true
     },
     "files": [
-      "out/**/*"
+      "out/**/*",
+      "electron/assets/**/*"
     ]
   }
 }
