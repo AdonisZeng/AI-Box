@@ -344,6 +344,168 @@ test('loads skill instructions on demand through the built-in skill loader', asy
   assert.match(result.observations[0]?.rawExcerpt ?? '', /# Repo Summary/)
 })
 
+test('loads memory into planner context and saves memory through the built-in memory tool', async () => {
+  const savedMemories: unknown[] = []
+  const plannerInputs: Array<{ memories: unknown[]; tools: string[] }> = []
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    memoryStore: {
+      list: async () => [
+        {
+          id: 'prefer-concise',
+          name: 'Prefer concise',
+          type: 'user',
+          description: 'User prefers concise responses.',
+          content: 'Keep final answers concise.',
+        },
+      ],
+      save: async (input) => {
+        savedMemories.push(input)
+        return {
+          id: 'repo-fact',
+          name: input.name,
+          type: input.type,
+          description: input.description,
+          content: input.content,
+        }
+      },
+    },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not handle the built-in memory tool')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: {
+      evaluate: () => {
+        throw new Error('agent.save_memory is internal and should not require approval')
+      },
+    },
+    planner: {
+      next: async (input) => {
+        plannerInputs.push({
+          memories: input.memories,
+          tools: input.tools.map((tool) => tool.name),
+        })
+
+        return input.observations.length === 0
+          ? {
+              type: 'call_tool' as const,
+              toolName: 'agent.save_memory',
+              arguments: {
+                name: 'Repo fact',
+                type: 'project',
+                description: 'The repository name discovered during the task.',
+                content: 'The package name is ai-box.',
+              },
+              summary: 'Save a reusable repository fact',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Memory saved.',
+            }
+      },
+    },
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'completed')
+  assert.equal(plannerInputs[0]?.tools.includes('agent.save_memory'), true)
+  assert.equal(plannerInputs[0]?.memories.length, 1)
+  assert.equal(savedMemories.length, 1)
+  assert.equal(result.observations[0]?.name, 'agent.save_memory')
+})
+
+test('recovers from a prompt-length planner failure by compacting loop context and retrying', async () => {
+  let plannerCalls = 0
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not be called in this test')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    planner: {
+      next: async () => {
+        plannerCalls += 1
+        if (plannerCalls === 1) {
+          throw new Error('context length exceeded')
+        }
+
+        return {
+          type: 'finish' as const,
+          summary: 'done',
+          finalMessage: 'Recovered after compaction.',
+        }
+      },
+    },
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'completed')
+  assert.equal(plannerCalls, 2)
+  assert.equal(result.loop.compactionCount, 1)
+  assert.equal(result.events.some((event) => event.type === 'task.recovery'), true)
+})
+
+test('blocks a tool when a pre-tool hook rejects the call', async () => {
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [{ name: 'local.write_file', description: 'Write local files', inputSchema: {} }],
+      callTool: async () => {
+        throw new Error('tool broker should not run a hook-blocked tool')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    hooks: {
+      run: async (name) =>
+        name === 'PreToolUse'
+          ? { exitCode: 1, message: 'Hook blocked local.write_file.' }
+          : { exitCode: 0, message: '' },
+    },
+    planner: {
+      next: async () => ({
+        type: 'call_tool' as const,
+        toolName: 'local.write_file',
+        arguments: { path: 'README.md', content: 'unsafe' },
+        summary: 'Write README',
+      }),
+    },
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'failed')
+  assert.match(result.events.at(-1)?.payload?.message as string, /Hook blocked/)
+})
+
 test('emits skill selection and records the skill observation before finishing', async () => {
   const runtime = new AgentRuntime({
     sessions: new TaskSessionManager(),

@@ -6,7 +6,9 @@ import type {
   AgentPlanningState,
 } from '../../src/types/agent.ts'
 import type { Message, ProviderConfig } from '../../src/types/providers.ts'
+import type { AgentMemorySummary } from './memory-store.ts'
 import type { AgentSkillSummary } from './skill-registry.ts'
+import { SystemPromptBuilder } from './system-prompt-builder.ts'
 
 export type PlannerDecision =
   | {
@@ -42,6 +44,7 @@ export interface BuildPlannerMessagesInput {
   mode: AgentExecutionMode
   skills: AgentSkillSummary[]
   tools: MCPTool[]
+  memories?: AgentMemorySummary[]
   planning: AgentPlanningState
   loop: AgentLoopState
   observations: AgentObservation[]
@@ -101,19 +104,16 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
     createMessage(
       'planner-system',
       'system',
-      [
-        'You are the AI Box agent planner.',
-        'Choose exactly one next action and return only one JSON object.',
-        'Allowed action types: call_tool, use_skill, run_script, finish.',
-        'Only use tools and skills from the provided context.',
-        'Use agent.update_plan to maintain a concise current-task todo list for multi-step work.',
-        'Use agent.task for isolated subtasks that benefit from a clean context.',
-        'Use agent.load_skill before applying a skill when the summary is not enough.',
-        'Keep at most one planning item in_progress at a time.',
-        'Treat loopState.messages as the authoritative agent loop transcript.',
-        'When loopState.transitionReason is a tool, skill, or script result, use that result before deciding the next action.',
-        'Include a short summary and an optional plan array when useful.',
-      ].join(' ')
+      new SystemPromptBuilder().build({
+        mode: input.mode,
+        tools: input.tools,
+        skills: input.skills,
+        memories: input.memories ?? [],
+        dynamicContext: {
+          cwd: process.cwd(),
+          currentDate: new Date().toISOString().slice(0, 10),
+        },
+      })
     ),
     createMessage(
       'planner-user',
@@ -124,6 +124,7 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
           executionMode: input.mode,
           availableSkills: input.skills,
           availableTools: input.tools,
+          availableMemories: input.memories ?? [],
           planningState: input.planning,
           planningReminder:
             input.planning.roundsSinceUpdate >= 3

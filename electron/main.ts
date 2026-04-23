@@ -11,6 +11,9 @@ import { RunnerManager } from './agent/runner-manager'
 import { ApprovalGate } from './agent/approval-gate'
 import { DefaultPlanner } from './agent/default-planner'
 import { DefaultSubagentRunner } from './agent/subagent-runner'
+import { HookRunner } from './agent/hook-runner'
+import { MemoryStore } from './agent/memory-store'
+import { RecoveryController } from './agent/recovery-controller'
 import { logger } from './logger'
 import { resolveAppIconPath } from './app-icon'
 import { createProvider } from '../src/lib/providers/index'
@@ -38,6 +41,9 @@ const agentRuntime = new AgentRuntime({
   toolBroker: new ToolBroker(),
   runner: runnerManager,
   approvalGate: new ApprovalGate(),
+  hooks: new HookRunner(),
+  memoryStore: new MemoryStore(),
+  recovery: new RecoveryController(),
   subagentRunner: new DefaultSubagentRunner({
     callModel: async (messages, input) => {
       const provider = createProvider(input.provider)

@@ -8,10 +8,16 @@ import type {
 } from '../../src/types/agent.ts'
 import type { MCPTool } from '../../src/types/mcp.ts'
 import type { ApprovalGate } from './approval-gate.ts'
+import type { ApprovalDecision } from './approval-gate.ts'
 import type {
   PlannerDecision,
   PlannerNextInput,
 } from './default-planner.ts'
+import type { HookRunner } from './hook-runner.ts'
+import type { AgentMemoryType } from './memory-store.ts'
+import type { MemoryStore } from './memory-store.ts'
+import { RecoveryController } from './recovery-controller.ts'
+import type { AgentRecoveryState } from './recovery-controller.ts'
 import type { RunnerManager } from './runner-manager.ts'
 import type { SkillExecutor } from './skill-executor.ts'
 import type { SkillRegistry } from './skill-registry.ts'
@@ -30,6 +36,9 @@ export interface AgentRuntimeDeps {
   runner: Pick<RunnerManager, 'run'>
   approvalGate: Pick<ApprovalGate, 'evaluate'>
   subagentRunner?: Pick<DefaultSubagentRunner, 'run'>
+  memoryStore?: Pick<MemoryStore, 'list' | 'save'>
+  hooks?: Pick<HookRunner, 'run'>
+  recovery?: RecoveryController
 }
 
 type TaskEventListener = (event: AgentTaskEvent) => void
@@ -37,6 +46,7 @@ type TaskEventListener = (event: AgentTaskEvent) => void
 const AGENT_UPDATE_PLAN_TOOL_NAME = 'agent.update_plan'
 const AGENT_TASK_TOOL_NAME = 'agent.task'
 const AGENT_LOAD_SKILL_TOOL_NAME = 'agent.load_skill'
+const AGENT_SAVE_MEMORY_TOOL_NAME = 'agent.save_memory'
 const AGENT_UPDATE_PLAN_TOOL: MCPTool = {
   name: AGENT_UPDATE_PLAN_TOOL_NAME,
   description:
@@ -88,13 +98,29 @@ const AGENT_LOAD_SKILL_TOOL: MCPTool = {
     required: ['skillId'],
   },
 }
+const AGENT_SAVE_MEMORY_TOOL: MCPTool = {
+  name: AGENT_SAVE_MEMORY_TOOL_NAME,
+  description: 'Save durable, reusable user, project, feedback, or reference memory.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      type: { enum: ['user', 'feedback', 'project', 'reference'] },
+      description: { type: 'string' },
+      content: { type: 'string' },
+    },
+    required: ['name', 'type', 'description', 'content'],
+  },
+}
 
 export class AgentRuntime {
   private deps: AgentRuntimeDeps
+  private recovery: RecoveryController
   private listeners = new Set<TaskEventListener>()
 
   constructor(deps: AgentRuntimeDeps) {
     this.deps = deps
+    this.recovery = deps.recovery ?? new RecoveryController()
   }
 
   onTaskEvent(listener: TaskEventListener): () => void {
@@ -183,13 +209,16 @@ export class AgentRuntime {
         mcpServers: session.mcpServers,
       }
       const skills = await this.deps.skillRegistry.load()
+      const memories = (await this.deps.memoryStore?.list()) ?? []
       const tools = [
         AGENT_UPDATE_PLAN_TOOL,
         AGENT_TASK_TOOL,
         AGENT_LOAD_SKILL_TOOL,
+        AGENT_SAVE_MEMORY_TOOL,
         ...(await this.deps.toolBroker.listTools(request.mcpServers)),
       ]
       let nextAction = resumedAction ?? null
+      const recoveryState = this.recovery.createState()
 
       for (;;) {
         const current = this.requireSession(taskId)
@@ -198,16 +227,21 @@ export class AgentRuntime {
         const decision =
           isResumingPendingAction
             ? this.pendingActionToDecision(pendingAction)
-            : await this.deps.planner.next({
-                prompt: request.prompt,
-                mode: request.mode,
-                provider: request.provider,
-                skills,
-                tools,
-                planning: current.planning,
-                loop: current.loop,
-                observations: current.observations,
-              })
+            : await this.nextPlannerDecisionWithRecovery(
+                taskId,
+                {
+                  prompt: request.prompt,
+                  mode: request.mode,
+                  provider: request.provider,
+                  skills,
+                  tools,
+                  memories,
+                  planning: current.planning,
+                  loop: current.loop,
+                  observations: current.observations,
+                },
+                recoveryState
+              )
         const actionId =
           decision.type === 'finish'
             ? null
@@ -248,6 +282,7 @@ export class AgentRuntime {
               skillId: skill.id,
             })
 
+            this.assertActionAllowed(approval)
             if (approval.requiresApproval && approval.request) {
               this.deps.sessions.setAwaitingApproval(taskId, approval.request, {
                 type: 'use_skill',
@@ -301,6 +336,7 @@ export class AgentRuntime {
               command: decision.command,
             })
 
+            this.assertActionAllowed(approval)
             if (approval.requiresApproval && approval.request) {
               this.deps.sessions.setAwaitingApproval(taskId, approval.request, {
                 type: 'run_script',
@@ -418,6 +454,39 @@ export class AgentRuntime {
           continue
         }
 
+        if (decision.toolName === AGENT_SAVE_MEMORY_TOOL_NAME) {
+          if (!skipApproval) {
+            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
+          }
+          this.emitEvent(taskId, 'tool.call.started', {
+            name: decision.toolName,
+            arguments: decision.arguments,
+          })
+          const result = await this.saveMemoryTool(decision.arguments)
+          const observation = this.createBuiltInToolObservation(
+            actionId,
+            decision.toolName,
+            decision.summary,
+            result
+          )
+
+          this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.deps.sessions.incrementPlanningStaleness(taskId)
+          this.emitEvent(taskId, 'memory.saved', {
+            memoryId: result.id,
+            type: result.type,
+          })
+          this.emitEvent(taskId, 'tool.call.finished', {
+            name: decision.toolName,
+            summary: decision.summary,
+            result,
+            status: 'success',
+          })
+          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
+          continue
+        }
+
         if (decision.toolName === AGENT_UPDATE_PLAN_TOOL_NAME) {
           if (!skipApproval) {
             this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
@@ -458,8 +527,10 @@ export class AgentRuntime {
           const approval = this.deps.approvalGate.evaluate(request.mode, {
             type: 'call_tool',
             toolName: decision.toolName,
+            arguments: decision.arguments,
           })
 
+          this.assertActionAllowed(approval)
           if (approval.requiresApproval && approval.request) {
             this.deps.sessions.setAwaitingApproval(taskId, approval.request, {
               type: 'call_tool',
@@ -474,6 +545,7 @@ export class AgentRuntime {
         }
 
         const toolServer = this.resolveToolServer(request, decision.toolName)
+        await this.runPreToolHook(taskId, decision.toolName, decision.arguments)
         this.emitEvent(taskId, 'tool.call.started', {
           name: decision.toolName,
           arguments: decision.arguments,
@@ -497,6 +569,7 @@ export class AgentRuntime {
         this.deps.sessions.addObservation(taskId, observation)
         this.deps.sessions.recordObservationWriteBack(taskId, observation)
         this.deps.sessions.incrementPlanningStaleness(taskId)
+        await this.runPostToolHook(taskId, decision.toolName, decision.arguments, observation)
         this.emitEvent(taskId, 'tool.call.finished', {
           name: decision.toolName,
           summary: decision.summary,
@@ -557,6 +630,112 @@ export class AgentRuntime {
       summary: decision.summary,
       finalMessage: decision.finalMessage,
       plan: decision.plan,
+    }
+  }
+
+  private async nextPlannerDecisionWithRecovery(
+    taskId: string,
+    input: PlannerNextInput,
+    state: AgentRecoveryState
+  ): Promise<PlannerDecision> {
+    let currentInput = input
+
+    for (;;) {
+      try {
+        return await this.deps.planner.next(currentInput)
+      } catch (error) {
+        const recovery = this.recovery.choose({ error, state })
+        this.emitEvent(taskId, 'task.recovery', {
+          kind: recovery.kind,
+          reason: recovery.reason,
+          error: error instanceof Error ? error.message : String(error),
+        })
+
+        if (recovery.kind === 'fail') {
+          throw error
+        }
+
+        if (recovery.kind === 'compact') {
+          this.deps.sessions.compactLoopForRecovery(taskId, recovery.reason)
+        }
+
+        if (recovery.kind === 'continue') {
+          this.deps.sessions.recordHookMessage(
+            taskId,
+            `Recovery instruction: ${recovery.reason} Ask the model to continue with valid JSON.`
+          )
+        }
+
+        const current = this.requireSession(taskId)
+        currentInput = {
+          ...currentInput,
+          planning: current.planning,
+          loop: current.loop,
+          observations: current.observations,
+        }
+      }
+    }
+  }
+
+  private assertActionAllowed(approval: ApprovalDecision): void {
+    if (approval.behavior === 'deny') {
+      throw new Error(approval.reason ?? 'Action denied by permission policy')
+    }
+  }
+
+  private async runPreToolHook(
+    taskId: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<void> {
+    if (!this.deps.hooks) {
+      return
+    }
+
+    const result = await this.deps.hooks.run('PreToolUse', {
+      taskId,
+      toolName,
+      arguments: args,
+    })
+    this.handleHookResult(taskId, 'PreToolUse', toolName, result)
+  }
+
+  private async runPostToolHook(
+    taskId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+    observation: AgentObservation
+  ): Promise<void> {
+    if (!this.deps.hooks) {
+      return
+    }
+
+    const result = await this.deps.hooks.run('PostToolUse', {
+      taskId,
+      toolName,
+      arguments: args,
+      observation,
+    })
+    this.handleHookResult(taskId, 'PostToolUse', toolName, result)
+  }
+
+  private handleHookResult(
+    taskId: string,
+    hookName: string,
+    targetName: string,
+    result: { exitCode: number; message: string }
+  ): void {
+    if (result.exitCode === 1) {
+      throw new Error(result.message || `${hookName} blocked ${targetName}`)
+    }
+
+    if (result.exitCode === 2 && result.message) {
+      this.deps.sessions.recordHookMessage(taskId, result.message)
+      this.emitEvent(taskId, 'hook.message', {
+        hookName,
+        targetName,
+        message: result.message,
+      })
     }
   }
 
@@ -664,6 +843,29 @@ export class AgentRuntime {
       skillId: loaded.id,
       content: loaded.content,
     }
+  }
+
+  private async saveMemoryTool(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.deps.memoryStore) {
+      throw new Error('Memory store is not configured')
+    }
+
+    const saved = await this.deps.memoryStore.save({
+      name: this.requireStringArg(args, 'name'),
+      type: this.requireMemoryType(args.type),
+      description: this.requireStringArg(args, 'description'),
+      content: this.requireStringArg(args, 'content'),
+    })
+
+    return saved
+  }
+
+  private requireMemoryType(value: unknown): AgentMemoryType {
+    if (value === 'user' || value === 'feedback' || value === 'project' || value === 'reference') {
+      return value
+    }
+
+    throw new Error(`Unsupported memory type: ${String(value)}`)
   }
 
   private requireStringArg(args: Record<string, unknown>, field: string): string {

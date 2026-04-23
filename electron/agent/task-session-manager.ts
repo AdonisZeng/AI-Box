@@ -141,6 +141,43 @@ export class TaskSessionManager {
     session.loop.transitionReason = observation.type
   }
 
+  recordHookMessage(taskId: string, message: string): void {
+    const session = this.require(taskId)
+    session.loop.messages.push({
+      role: 'user',
+      content: [
+        {
+          type: 'hook_message',
+          content: message,
+        },
+      ],
+      timestamp: Date.now(),
+    })
+    session.loop.turnCount += 1
+    session.loop.transitionReason = null
+  }
+
+  compactLoopForRecovery(taskId: string, reason: string): void {
+    const session = this.require(taskId)
+    const timestamp = Date.now()
+    const firstMessage = session.loop.messages[0]
+    const lastMessage = session.loop.messages.at(-1)
+    const compactedMessage = {
+      role: 'user' as const,
+      content: `[recovery compacted active loop: ${reason}]`,
+      timestamp,
+    }
+
+    session.loop.messages =
+      firstMessage && lastMessage && firstMessage !== lastMessage
+        ? [firstMessage, compactedMessage, lastMessage]
+        : firstMessage
+          ? [firstMessage, compactedMessage]
+          : [compactedMessage]
+    session.loop.compactionCount += 1
+    session.loop.transitionReason = null
+  }
+
   setAwaitingApproval(
     taskId: string,
     request: AgentApprovalRequest,

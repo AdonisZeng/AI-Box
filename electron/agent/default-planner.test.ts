@@ -23,6 +23,15 @@ test('serializes task context, skills, tools, and observations into prompt messa
       },
     ],
     tools: [{ name: 'filesystem.read_file', description: 'Read a file', inputSchema: {} }],
+    memories: [
+      {
+        id: 'prefer-concise',
+        name: 'Prefer concise',
+        type: 'user',
+        description: 'User prefers concise answers.',
+        content: 'Keep final answers concise.',
+      },
+    ],
     planning: {
       roundsSinceUpdate: 3,
       items: [
@@ -36,6 +45,7 @@ test('serializes task context, skills, tools, and observations into prompt messa
     loop: {
       turnCount: 2,
       transitionReason: 'tool_result',
+      compactionCount: 1,
       messages: [
         { role: 'user', content: 'Find the active provider', timestamp: 1 },
         {
@@ -82,6 +92,8 @@ test('serializes task context, skills, tools, and observations into prompt messa
   assert.match(messages[1]?.content ?? '', /"planningState"/)
   assert.match(messages[1]?.content ?? '', /"planningReminder"/)
   assert.match(messages[1]?.content ?? '', /"contextBudget"/)
+  assert.match(messages[1]?.content ?? '', /"availableMemories"/)
+  assert.match(messages[1]?.content ?? '', /Prefer concise/)
 })
 
 test('parses JSON planner output into a normalized action', () => {
@@ -117,6 +129,7 @@ test('uses the injected model caller to produce the next planner decision', asyn
     mode: 'auto',
     skills: [],
     tools: [],
+    memories: [],
     planning: {
       items: [],
       roundsSinceUpdate: 0,
@@ -124,6 +137,7 @@ test('uses the injected model caller to produce the next planner decision', asyn
     loop: {
       turnCount: 1,
       transitionReason: null,
+      compactionCount: 0,
       messages: [{ role: 'user', content: 'Summarize the repository', timestamp: 1 }],
     },
     observations: [],
