@@ -14,6 +14,9 @@ import { DefaultSubagentRunner } from './agent/subagent-runner'
 import { HookRunner } from './agent/hook-runner'
 import { MemoryStore } from './agent/memory-store'
 import { RecoveryController } from './agent/recovery-controller'
+import { TaskGraphStore } from './agent/task-graph-store'
+import { BackgroundTaskManager } from './agent/background-task-manager'
+import { ScheduleStore } from './agent/schedule-store'
 import { logger } from './logger'
 import { resolveAppIconPath } from './app-icon'
 import { createProvider } from '../src/lib/providers/index'
@@ -44,6 +47,9 @@ const agentRuntime = new AgentRuntime({
   hooks: new HookRunner(),
   memoryStore: new MemoryStore(),
   recovery: new RecoveryController(),
+  taskGraph: new TaskGraphStore(),
+  backgroundTasks: new BackgroundTaskManager({ runner: runnerManager }),
+  scheduleStore: new ScheduleStore(),
   subagentRunner: new DefaultSubagentRunner({
     callModel: async (messages, input) => {
       const provider = createProvider(input.provider)

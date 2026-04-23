@@ -244,6 +244,19 @@ export function buildAgentConversationItems({
         content,
         tone: 'rejected',
       })
+      return
+    }
+
+    if (taskEvent.type === 'schedule.due') {
+      const name = getString(taskEvent.payload?.name) || '计划任务'
+      const prompt = getString(taskEvent.payload?.prompt)
+      items.push({
+        type: 'assistant',
+        id: eventId(taskEvent, index),
+        timestamp: taskEvent.timestamp,
+        content: prompt ? `计划提醒：${name}\n${prompt}` : `计划提醒：${name}`,
+        tone: 'success',
+      })
     }
   })
 

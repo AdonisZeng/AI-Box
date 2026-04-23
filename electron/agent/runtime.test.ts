@@ -425,6 +425,248 @@ test('loads memory into planner context and saves memory through the built-in me
   assert.equal(result.observations[0]?.name, 'agent.save_memory')
 })
 
+test('creates graph tasks through the built-in task graph tool', async () => {
+  const createdTasks: unknown[] = []
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    taskGraph: {
+      create: async (input) => {
+        createdTasks.push(input)
+        return {
+          id: 'task-1',
+          title: input.title,
+          description: input.description,
+          status: 'todo',
+          blockedBy: input.blockedBy ?? [],
+          blocks: [],
+          ready: true,
+          createdAt: 1,
+          updatedAt: 1,
+        }
+      },
+      update: async () => {
+        throw new Error('update should not be called')
+      },
+      get: async () => null,
+      list: async () => [],
+    },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not handle task graph tools')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    planner: {
+      next: async (input) =>
+        input.observations.length === 0
+          ? {
+              type: 'call_tool' as const,
+              toolName: 'agent.task_create',
+              arguments: {
+                title: 'Implement final Agent tools',
+                description: 'Add task graph, background, schedule, and capability routing.',
+              },
+              summary: 'Create a durable task graph item',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Task created.',
+            },
+    },
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'completed')
+  assert.equal(createdTasks.length, 1)
+  assert.equal(result.observations[0]?.name, 'agent.task_create')
+})
+
+test('starts background work through the built-in background tool', async () => {
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    backgroundTasks: {
+      start: async (input) => ({
+        id: 'bg-1',
+        runner: input.runner,
+        command: input.command,
+        cwd: input.cwd,
+        summary: input.summary,
+        status: 'running',
+        stdout: '',
+        stderr: '',
+        logPath: 'C:/logs/bg-1.log',
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+      check: async () => null,
+    },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not handle background tools')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    planner: {
+      next: async (input) =>
+        input.observations.length === 0
+          ? {
+              type: 'call_tool' as const,
+              toolName: 'agent.background_run',
+              arguments: {
+                runner: 'shell',
+                command: 'scripts/slow-task.sh',
+                cwd: 'D:/Development/Electron/AI-Box',
+                summary: 'Run a slow verification command',
+              },
+              summary: 'Start background verification',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Background task started.',
+            },
+    },
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'completed')
+  assert.equal(result.observations[0]?.name, 'agent.background_run')
+  assert.match(result.observations[0]?.rawExcerpt ?? '', /bg-1/)
+})
+
+test('reports due schedules through the built-in schedule check tool', async () => {
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    scheduleStore: {
+      create: async () => {
+        throw new Error('create should not be called')
+      },
+      list: async () => [],
+      checkDue: async () => [
+        {
+          scheduleId: 'sched-1',
+          name: 'Check background task',
+          prompt: 'Check if the background task finished.',
+          dueAt: 1,
+        },
+      ],
+    },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not handle schedule tools')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    planner: {
+      next: async (input) =>
+        input.observations.length === 0
+          ? {
+              type: 'call_tool' as const,
+              toolName: 'agent.schedule_check',
+              arguments: { now: 1 },
+              summary: 'Check due schedules',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Schedule notifications checked.',
+            },
+    },
+  })
+  const events: Array<{ type: string }> = []
+  runtime.onTaskEvent((event) => events.push({ type: event.type }))
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'completed')
+  assert.equal(result.observations[0]?.name, 'agent.schedule_check')
+  assert.equal(events.some((event) => event.type === 'schedule.due'), true)
+})
+
+test('routes prefixed MCP tools through the capability router before calling the broker', async () => {
+  const calls: Array<{ serverId: string | null; toolName: string }> = []
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async (server, toolName) => {
+        calls.push({ serverId: server?.id ?? null, toolName })
+        return { content: 'ok' }
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    planner: {
+      next: async (input) => {
+        if (input.observations.length > 0) {
+          return {
+            type: 'finish' as const,
+            summary: 'done',
+            finalMessage: 'MCP tool routed.',
+          }
+        }
+
+        assert.equal(input.tools.some((tool) => tool.name === 'mcp__fs__read_file'), true)
+        return {
+          type: 'call_tool' as const,
+          toolName: 'mcp__fs__read_file',
+          arguments: { path: 'package.json' },
+          summary: 'Read via prefixed MCP tool',
+        }
+      },
+    },
+  })
+
+  const result = await runtime.start({
+    ...createRequest(),
+    mcpServers: [
+      {
+        id: 'fs',
+        name: 'Filesystem',
+        url: 'http://localhost:3001',
+        connected: true,
+        tools: [{ name: 'read_file', description: 'Read a file', inputSchema: {} }],
+      },
+    ],
+  })
+
+  assert.equal(result.status, 'completed')
+  assert.deepEqual(calls, [{ serverId: 'fs', toolName: 'read_file' }])
+})
+
 test('recovers from a prompt-length planner failure by compacting loop context and retrying', async () => {
   let plannerCalls = 0
   const runtime = new AgentRuntime({

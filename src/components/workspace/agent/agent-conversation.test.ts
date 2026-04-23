@@ -116,3 +116,25 @@ test('renders rejected task events as assistant feedback', () => {
   assert.equal(rejected?.tone, 'rejected')
   assert.equal(rejected?.content, '用户拒绝了外部操作。')
 })
+
+test('renders due schedule notifications as assistant feedback', () => {
+  const items = buildAgentConversationItems({
+    events: [
+      event('task.created', { prompt: 'Check schedules' }, 1),
+      event(
+        'schedule.due',
+        {
+          name: 'Check background task',
+          prompt: 'Check if the background task finished.',
+        },
+        2
+      ),
+    ],
+    approval: null,
+  })
+
+  const notification = items.find((item) => item.type === 'assistant')
+  assert.equal(notification?.tone, 'success')
+  assert.match(notification?.content ?? '', /Check background task/)
+  assert.match(notification?.content ?? '', /Check if the background task finished/)
+})

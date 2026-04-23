@@ -9,6 +9,8 @@ import type {
 import type { MCPTool } from '../../src/types/mcp.ts'
 import type { ApprovalGate } from './approval-gate.ts'
 import type { ApprovalDecision } from './approval-gate.ts'
+import type { BackgroundTaskManager } from './background-task-manager.ts'
+import { CapabilityRouter } from './capability-router.ts'
 import type {
   PlannerDecision,
   PlannerNextInput,
@@ -22,6 +24,8 @@ import type { RunnerManager } from './runner-manager.ts'
 import type { SkillExecutor } from './skill-executor.ts'
 import type { SkillRegistry } from './skill-registry.ts'
 import type { AgentSubagentRunResult, DefaultSubagentRunner } from './subagent-runner.ts'
+import type { ScheduleStore } from './schedule-store.ts'
+import type { AgentGraphTaskStatus, TaskGraphStore } from './task-graph-store.ts'
 import type { TaskSessionManager } from './task-session-manager.ts'
 import type { ToolBroker } from './tool-broker.ts'
 
@@ -39,6 +43,10 @@ export interface AgentRuntimeDeps {
   memoryStore?: Pick<MemoryStore, 'list' | 'save'>
   hooks?: Pick<HookRunner, 'run'>
   recovery?: RecoveryController
+  taskGraph?: Pick<TaskGraphStore, 'create' | 'update' | 'get' | 'list'>
+  backgroundTasks?: Pick<BackgroundTaskManager, 'start' | 'check'>
+  scheduleStore?: Pick<ScheduleStore, 'create' | 'list' | 'checkDue'>
+  capabilityRouter?: CapabilityRouter
 }
 
 type TaskEventListener = (event: AgentTaskEvent) => void
@@ -47,6 +55,15 @@ const AGENT_UPDATE_PLAN_TOOL_NAME = 'agent.update_plan'
 const AGENT_TASK_TOOL_NAME = 'agent.task'
 const AGENT_LOAD_SKILL_TOOL_NAME = 'agent.load_skill'
 const AGENT_SAVE_MEMORY_TOOL_NAME = 'agent.save_memory'
+const AGENT_TASK_CREATE_TOOL_NAME = 'agent.task_create'
+const AGENT_TASK_UPDATE_TOOL_NAME = 'agent.task_update'
+const AGENT_TASK_GET_TOOL_NAME = 'agent.task_get'
+const AGENT_TASK_LIST_TOOL_NAME = 'agent.task_list'
+const AGENT_BACKGROUND_RUN_TOOL_NAME = 'agent.background_run'
+const AGENT_BACKGROUND_CHECK_TOOL_NAME = 'agent.background_check'
+const AGENT_SCHEDULE_CREATE_TOOL_NAME = 'agent.schedule_create'
+const AGENT_SCHEDULE_LIST_TOOL_NAME = 'agent.schedule_list'
+const AGENT_SCHEDULE_CHECK_TOOL_NAME = 'agent.schedule_check'
 const AGENT_UPDATE_PLAN_TOOL: MCPTool = {
   name: AGENT_UPDATE_PLAN_TOOL_NAME,
   description:
@@ -112,15 +129,127 @@ const AGENT_SAVE_MEMORY_TOOL: MCPTool = {
     required: ['name', 'type', 'description', 'content'],
   },
 }
+const AGENT_TASK_CREATE_TOOL: MCPTool = {
+  name: AGENT_TASK_CREATE_TOOL_NAME,
+  description: 'Create a durable task graph item for long-running or dependent work.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      description: { type: 'string' },
+      blockedBy: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['title', 'description'],
+  },
+}
+const AGENT_TASK_UPDATE_TOOL: MCPTool = {
+  name: AGENT_TASK_UPDATE_TOOL_NAME,
+  description: 'Update a durable task graph item status, details, or blockers.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      id: { type: 'string' },
+      title: { type: 'string' },
+      description: { type: 'string' },
+      status: { enum: ['todo', 'in_progress', 'done', 'cancelled'] },
+      blockedBy: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['id'],
+  },
+}
+const AGENT_TASK_GET_TOOL: MCPTool = {
+  name: AGENT_TASK_GET_TOOL_NAME,
+  description: 'Load one durable task graph item by id.',
+  inputSchema: {
+    type: 'object',
+    properties: { id: { type: 'string' } },
+    required: ['id'],
+  },
+}
+const AGENT_TASK_LIST_TOOL: MCPTool = {
+  name: AGENT_TASK_LIST_TOOL_NAME,
+  description: 'List durable task graph items, optionally only ready work.',
+  inputSchema: {
+    type: 'object',
+    properties: { readyOnly: { type: 'boolean' } },
+  },
+}
+const AGENT_BACKGROUND_RUN_TOOL: MCPTool = {
+  name: AGENT_BACKGROUND_RUN_TOOL_NAME,
+  description: 'Start a long-running Node, Python, or Shell command in the background.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      runner: { enum: ['node', 'python', 'shell'] },
+      command: { type: 'string' },
+      cwd: { type: 'string' },
+      summary: { type: 'string' },
+    },
+    required: ['runner', 'command', 'cwd', 'summary'],
+  },
+}
+const AGENT_BACKGROUND_CHECK_TOOL: MCPTool = {
+  name: AGENT_BACKGROUND_CHECK_TOOL_NAME,
+  description: 'Check a previously started background task by id.',
+  inputSchema: {
+    type: 'object',
+    properties: { id: { type: 'string' } },
+    required: ['id'],
+  },
+}
+const AGENT_SCHEDULE_CREATE_TOOL: MCPTool = {
+  name: AGENT_SCHEDULE_CREATE_TOOL_NAME,
+  description: 'Create a local interval schedule that injects due notifications into the agent.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      prompt: { type: 'string' },
+      everyMinutes: { type: 'number' },
+      startAt: { type: 'number' },
+    },
+    required: ['name', 'prompt', 'everyMinutes'],
+  },
+}
+const AGENT_SCHEDULE_LIST_TOOL: MCPTool = {
+  name: AGENT_SCHEDULE_LIST_TOOL_NAME,
+  description: 'List local Agent schedules.',
+  inputSchema: { type: 'object', properties: {} },
+}
+const AGENT_SCHEDULE_CHECK_TOOL: MCPTool = {
+  name: AGENT_SCHEDULE_CHECK_TOOL_NAME,
+  description: 'Check local Agent schedules and return due notifications.',
+  inputSchema: {
+    type: 'object',
+    properties: { now: { type: 'number' } },
+  },
+}
+const BUILT_IN_AGENT_TOOLS: MCPTool[] = [
+  AGENT_UPDATE_PLAN_TOOL,
+  AGENT_TASK_TOOL,
+  AGENT_LOAD_SKILL_TOOL,
+  AGENT_SAVE_MEMORY_TOOL,
+  AGENT_TASK_CREATE_TOOL,
+  AGENT_TASK_UPDATE_TOOL,
+  AGENT_TASK_GET_TOOL,
+  AGENT_TASK_LIST_TOOL,
+  AGENT_BACKGROUND_RUN_TOOL,
+  AGENT_BACKGROUND_CHECK_TOOL,
+  AGENT_SCHEDULE_CREATE_TOOL,
+  AGENT_SCHEDULE_LIST_TOOL,
+  AGENT_SCHEDULE_CHECK_TOOL,
+]
 
 export class AgentRuntime {
   private deps: AgentRuntimeDeps
   private recovery: RecoveryController
+  private capabilityRouter: CapabilityRouter
   private listeners = new Set<TaskEventListener>()
 
   constructor(deps: AgentRuntimeDeps) {
     this.deps = deps
     this.recovery = deps.recovery ?? new RecoveryController()
+    this.capabilityRouter = deps.capabilityRouter ?? new CapabilityRouter()
   }
 
   onTaskEvent(listener: TaskEventListener): () => void {
@@ -210,13 +339,11 @@ export class AgentRuntime {
       }
       const skills = await this.deps.skillRegistry.load()
       const memories = (await this.deps.memoryStore?.list()) ?? []
-      const tools = [
-        AGENT_UPDATE_PLAN_TOOL,
-        AGENT_TASK_TOOL,
-        AGENT_LOAD_SKILL_TOOL,
-        AGENT_SAVE_MEMORY_TOOL,
-        ...(await this.deps.toolBroker.listTools(request.mcpServers)),
-      ]
+      const tools = this.capabilityRouter.listTools({
+        builtInTools: BUILT_IN_AGENT_TOOLS,
+        externalTools: await this.deps.toolBroker.listTools(request.mcpServers),
+        mcpServers: request.mcpServers,
+      })
       let nextAction = resumedAction ?? null
       const recoveryState = this.recovery.createState()
 
@@ -487,6 +614,101 @@ export class AgentRuntime {
           continue
         }
 
+        if (this.isTaskGraphTool(decision.toolName)) {
+          if (!skipApproval) {
+            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
+          }
+          this.emitEvent(taskId, 'tool.call.started', {
+            name: decision.toolName,
+            arguments: decision.arguments,
+          })
+          const result = await this.runTaskGraphTool(decision.toolName, decision.arguments)
+          const observation = this.createBuiltInToolObservation(
+            actionId,
+            decision.toolName,
+            decision.summary,
+            result
+          )
+
+          this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.deps.sessions.incrementPlanningStaleness(taskId)
+          this.emitEvent(taskId, 'graph.task.updated', {
+            toolName: decision.toolName,
+            result,
+          })
+          this.emitEvent(taskId, 'tool.call.finished', {
+            name: decision.toolName,
+            summary: decision.summary,
+            result,
+            status: 'success',
+          })
+          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
+          continue
+        }
+
+        if (this.isBackgroundTool(decision.toolName)) {
+          if (!skipApproval) {
+            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
+          }
+          this.emitEvent(taskId, 'tool.call.started', {
+            name: decision.toolName,
+            arguments: decision.arguments,
+          })
+          const result = await this.runBackgroundTool(decision.toolName, decision.arguments)
+          const observation = this.createBuiltInToolObservation(
+            actionId,
+            decision.toolName,
+            decision.summary,
+            result
+          )
+
+          this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.deps.sessions.incrementPlanningStaleness(taskId)
+          this.emitEvent(taskId, 'background.task.updated', {
+            toolName: decision.toolName,
+            result,
+          })
+          this.emitEvent(taskId, 'tool.call.finished', {
+            name: decision.toolName,
+            summary: decision.summary,
+            result,
+            status: 'success',
+          })
+          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
+          continue
+        }
+
+        if (this.isScheduleTool(decision.toolName)) {
+          if (!skipApproval) {
+            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
+          }
+          this.emitEvent(taskId, 'tool.call.started', {
+            name: decision.toolName,
+            arguments: decision.arguments,
+          })
+          const result = await this.runScheduleTool(taskId, decision.toolName, decision.arguments)
+          const observation = this.createBuiltInToolObservation(
+            actionId,
+            decision.toolName,
+            decision.summary,
+            result
+          )
+
+          this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.deps.sessions.incrementPlanningStaleness(taskId)
+          this.emitEvent(taskId, 'tool.call.finished', {
+            name: decision.toolName,
+            summary: decision.summary,
+            result,
+            status: 'success',
+          })
+          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
+          continue
+        }
+
         if (decision.toolName === AGENT_UPDATE_PLAN_TOOL_NAME) {
           if (!skipApproval) {
             this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
@@ -544,15 +766,15 @@ export class AgentRuntime {
           }
         }
 
-        const toolServer = this.resolveToolServer(request, decision.toolName)
+        const toolRoute = this.resolveToolRoute(request, decision.toolName)
         await this.runPreToolHook(taskId, decision.toolName, decision.arguments)
         this.emitEvent(taskId, 'tool.call.started', {
           name: decision.toolName,
           arguments: decision.arguments,
         })
         const result = await this.deps.toolBroker.callTool(
-          toolServer,
-          decision.toolName,
+          toolRoute.server,
+          toolRoute.toolName,
           decision.arguments
         )
         const observation: AgentObservation = {
@@ -860,6 +1082,152 @@ export class AgentRuntime {
     return saved
   }
 
+  private isTaskGraphTool(toolName: string): boolean {
+    return (
+      toolName === AGENT_TASK_CREATE_TOOL_NAME ||
+      toolName === AGENT_TASK_UPDATE_TOOL_NAME ||
+      toolName === AGENT_TASK_GET_TOOL_NAME ||
+      toolName === AGENT_TASK_LIST_TOOL_NAME
+    )
+  }
+
+  private async runTaskGraphTool(
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    if (!this.deps.taskGraph) {
+      throw new Error('Task graph store is not configured')
+    }
+
+    if (toolName === AGENT_TASK_CREATE_TOOL_NAME) {
+      return this.deps.taskGraph.create({
+        title: this.requireStringArg(args, 'title'),
+        description: this.requireStringArg(args, 'description'),
+        blockedBy: this.optionalStringArray(args.blockedBy),
+      })
+    }
+
+    if (toolName === AGENT_TASK_UPDATE_TOOL_NAME) {
+      return this.deps.taskGraph.update(this.requireStringArg(args, 'id'), {
+        ...(typeof args.title === 'string' ? { title: args.title } : {}),
+        ...(typeof args.description === 'string' ? { description: args.description } : {}),
+        ...(args.status !== undefined ? { status: this.requireGraphTaskStatus(args.status) } : {}),
+        ...(Array.isArray(args.blockedBy) ? { blockedBy: this.optionalStringArray(args.blockedBy) } : {}),
+      })
+    }
+
+    if (toolName === AGENT_TASK_GET_TOOL_NAME) {
+      return this.deps.taskGraph.get(this.requireStringArg(args, 'id'))
+    }
+
+    return this.deps.taskGraph.list({
+      readyOnly: args.readyOnly === true,
+    })
+  }
+
+  private isBackgroundTool(toolName: string): boolean {
+    return toolName === AGENT_BACKGROUND_RUN_TOOL_NAME || toolName === AGENT_BACKGROUND_CHECK_TOOL_NAME
+  }
+
+  private async runBackgroundTool(
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    if (!this.deps.backgroundTasks) {
+      throw new Error('Background task manager is not configured')
+    }
+
+    if (toolName === AGENT_BACKGROUND_RUN_TOOL_NAME) {
+      return this.deps.backgroundTasks.start({
+        runner: this.requireRunner(args.runner),
+        command: this.requireStringArg(args, 'command'),
+        cwd: this.requireStringArg(args, 'cwd'),
+        summary: this.requireStringArg(args, 'summary'),
+      })
+    }
+
+    return this.deps.backgroundTasks.check(this.requireStringArg(args, 'id'))
+  }
+
+  private isScheduleTool(toolName: string): boolean {
+    return (
+      toolName === AGENT_SCHEDULE_CREATE_TOOL_NAME ||
+      toolName === AGENT_SCHEDULE_LIST_TOOL_NAME ||
+      toolName === AGENT_SCHEDULE_CHECK_TOOL_NAME
+    )
+  }
+
+  private async runScheduleTool(
+    taskId: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<unknown> {
+    if (!this.deps.scheduleStore) {
+      throw new Error('Schedule store is not configured')
+    }
+
+    if (toolName === AGENT_SCHEDULE_CREATE_TOOL_NAME) {
+      return this.deps.scheduleStore.create({
+        name: this.requireStringArg(args, 'name'),
+        prompt: this.requireStringArg(args, 'prompt'),
+        everyMinutes: this.requirePositiveNumberArg(args, 'everyMinutes'),
+        ...(typeof args.startAt === 'number' ? { startAt: args.startAt } : {}),
+      })
+    }
+
+    if (toolName === AGENT_SCHEDULE_LIST_TOOL_NAME) {
+      return this.deps.scheduleStore.list()
+    }
+
+    const due = await this.deps.scheduleStore.checkDue(
+      typeof args.now === 'number' ? args.now : Date.now()
+    )
+    for (const notification of due) {
+      this.emitEvent(taskId, 'schedule.due', notification)
+      this.deps.sessions.recordHookMessage(
+        taskId,
+        `Schedule due: ${notification.name}\n${notification.prompt}`
+      )
+    }
+
+    return due
+  }
+
+  private requireGraphTaskStatus(value: unknown): AgentGraphTaskStatus {
+    if (value === 'todo' || value === 'in_progress' || value === 'done' || value === 'cancelled') {
+      return value
+    }
+
+    throw new Error(`Unsupported graph task status: ${String(value)}`)
+  }
+
+  private requireRunner(value: unknown): 'node' | 'python' | 'shell' {
+    if (value === 'node' || value === 'python' || value === 'shell') {
+      return value
+    }
+
+    throw new Error(`Unsupported background runner: ${String(value)}`)
+  }
+
+  private requirePositiveNumberArg(args: Record<string, unknown>, field: string): number {
+    const value = args[field]
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      throw new Error(`${field} must be a positive number`)
+    }
+
+    return value
+  }
+
+  private optionalStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    return value
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim())
+  }
+
   private requireMemoryType(value: unknown): AgentMemoryType {
     if (value === 'user' || value === 'feedback' || value === 'project' || value === 'reference') {
       return value
@@ -908,28 +1276,14 @@ export class AgentRuntime {
     }
   }
 
-  private resolveToolServer(
+  private resolveToolRoute(
     request: AgentStartTaskRequest,
     toolName: string
-  ): AgentStartTaskRequest['mcpServers'][number] | null {
-    if (toolName.startsWith('local.')) {
-      return null
-    }
-
-    const matchingServer = request.mcpServers.find((server) =>
-      server.tools.some((tool) => tool.name === toolName)
-    )
-
-    if (matchingServer) {
-      return matchingServer
-    }
-
-    const fallbackServer = request.mcpServers[0]
-    if (!fallbackServer) {
-      throw new Error(`No MCP server is available for tool ${toolName}`)
-    }
-
-    return fallbackServer
+  ): { server: AgentStartTaskRequest['mcpServers'][number] | null; toolName: string } {
+    return this.capabilityRouter.resolve({
+      toolName,
+      mcpServers: request.mcpServers,
+    })
   }
 
   private emitEvent(
