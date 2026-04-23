@@ -8,7 +8,7 @@
     "build": "electron-vite build && electron-builder",
     "preview": "electron-vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "node --test electron src"
+    "test": "node --test \"electron/**/*.test.ts\" \"src/**/*.test.ts\""
   },
   "dependencies": {
     "react": "^18.2.0",
