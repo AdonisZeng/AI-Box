@@ -2,6 +2,7 @@ import type { AgentApprovalRequest, AgentExecutionMode } from '../../src/types/a
 
 type ActionDescriptor =
   | { type: 'call_tool'; toolName: string }
+  | { type: 'use_skill'; skillId: string }
   | { type: 'run_script'; command: string }
   | { type: 'respond' }
 
@@ -34,6 +35,17 @@ export class ApprovalGate {
           actionId: crypto.randomUUID(),
           title: `Run ${action.command}`,
           details: `The Agent wants to execute ${action.command}.`,
+        },
+      }
+    }
+
+    if (action.type === 'use_skill') {
+      return {
+        requiresApproval: true,
+        request: {
+          actionId: crypto.randomUUID(),
+          title: `Run Skill ${action.skillId}`,
+          details: `The Agent wants to execute local Skill ${action.skillId}.`,
         },
       }
     }

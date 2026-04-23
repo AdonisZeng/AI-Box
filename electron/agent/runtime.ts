@@ -159,6 +159,24 @@ export class AgentRuntime {
             throw new Error(`Unknown skill: ${decision.skillId}`)
           }
 
+          if (!skipApproval && skill.isExecutable) {
+            const approval = this.deps.approvalGate.evaluate(request.mode, {
+              type: 'use_skill',
+              skillId: skill.id,
+            })
+
+            if (approval.requiresApproval && approval.request) {
+              this.deps.sessions.setAwaitingApproval(taskId, approval.request, {
+                type: 'use_skill',
+                skillId: skill.id,
+                summary: decision.summary,
+              })
+              this.emitEvent(taskId, 'approval.required', approval.request)
+              return this.requireSession(taskId)
+            }
+          }
+
+          this.emitStepStarted(taskId, 'use_skill', decision.summary, skill.id)
           this.emitEvent(taskId, 'skill.selected', {
             skillId: skill.id,
             name: skill.name,
@@ -178,10 +196,15 @@ export class AgentRuntime {
             status: result.status,
             summary: result.summary,
           })
+          this.emitStepCompleted(taskId, 'use_skill', decision.summary, skill.id)
           continue
         }
 
         if (decision.type === 'run_script') {
+          if (!skipApproval) {
+            this.emitStepStarted(taskId, 'run_script', decision.summary, decision.command)
+          }
+
           if (!skipApproval) {
             const approval = this.deps.approvalGate.evaluate(request.mode, {
               type: 'run_script',
@@ -235,7 +258,12 @@ export class AgentRuntime {
             command: decision.command,
             status: observation.status,
           })
+          this.emitStepCompleted(taskId, 'run_script', decision.summary, decision.command)
           continue
+        }
+
+        if (!skipApproval) {
+          this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
         }
 
         if (!skipApproval) {
@@ -282,7 +310,9 @@ export class AgentRuntime {
           name: decision.toolName,
           summary: decision.summary,
           result,
+          status: 'success',
         })
+        this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
       }
     } catch (error) {
       const failed = this.requireSession(taskId)
@@ -300,6 +330,14 @@ export class AgentRuntime {
         type: 'call_tool',
         toolName: action.toolName,
         arguments: action.arguments,
+        summary: action.summary,
+      }
+    }
+
+    if (action.type === 'use_skill') {
+      return {
+        type: 'use_skill',
+        skillId: action.skillId,
         summary: action.summary,
       }
     }
@@ -362,6 +400,32 @@ export class AgentRuntime {
     }
 
     return session
+  }
+
+  private emitStepStarted(
+    taskId: string,
+    actionType: 'call_tool' | 'use_skill' | 'run_script',
+    summary: string,
+    name: string
+  ): void {
+    this.emitEvent(taskId, 'step.started', {
+      actionType,
+      summary,
+      name,
+    })
+  }
+
+  private emitStepCompleted(
+    taskId: string,
+    actionType: 'call_tool' | 'use_skill' | 'run_script',
+    summary: string,
+    name: string
+  ): void {
+    this.emitEvent(taskId, 'step.completed', {
+      actionType,
+      summary,
+      name,
+    })
   }
 
   private toExcerpt(value: unknown): string {

@@ -1,7 +1,9 @@
 interface ToolTracePanelProps {
   toolCalls: Array<{
     name: string
-    result: unknown
+    status: 'running' | 'success' | 'error'
+    arguments?: Record<string, unknown>
+    result?: unknown
     summary?: string
   }>
 }
@@ -36,13 +38,40 @@ export function ToolTracePanel({ toolCalls }: ToolTracePanelProps) {
                     <p className="mt-1 text-xs text-[#8b8b8b]">{tool.summary}</p>
                   ) : null}
                 </div>
-                <span className="rounded-full bg-[#2b3e59] px-2.5 py-1 text-[11px] text-[#9ac7ff]">
-                  已完成
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[11px] ${
+                    tool.status === 'running'
+                      ? 'bg-[#4b3a16] text-[#ffd48d]'
+                      : tool.status === 'error'
+                        ? 'bg-[#4a2020] text-[#ffb3b3]'
+                        : 'bg-[#2b3e59] text-[#9ac7ff]'
+                  }`}
+                >
+                  {tool.status === 'running'
+                    ? '执行中'
+                    : tool.status === 'error'
+                      ? '失败'
+                      : '已完成'}
                 </span>
               </div>
-              <pre className="mt-3 overflow-x-auto rounded-xl bg-[#181818] p-3 text-xs leading-5 text-[#b8d4ff]">
-                {stringifyResult(tool.result)}
-              </pre>
+              {tool.arguments ? (
+                <div className="mt-3">
+                  <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[#7c8ea8]">
+                    Arguments
+                  </div>
+                  <pre className="overflow-x-auto rounded-xl bg-[#181818] p-3 text-xs leading-5 text-[#d4d4d4]">
+                    {stringifyResult(tool.arguments)}
+                  </pre>
+                </div>
+              ) : null}
+              <div className="mt-3">
+                <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[#7c8ea8]">
+                  Result
+                </div>
+                <pre className="overflow-x-auto rounded-xl bg-[#181818] p-3 text-xs leading-5 text-[#b8d4ff]">
+                  {tool.result === undefined ? '等待结果输出…' : stringifyResult(tool.result)}
+                </pre>
+              </div>
             </article>
           ))
         )}

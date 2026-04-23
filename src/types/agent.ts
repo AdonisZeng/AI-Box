@@ -25,6 +25,11 @@ export type AgentPendingAction =
       summary: string
     }
   | {
+      type: 'use_skill'
+      skillId: string
+      summary: string
+    }
+  | {
       type: 'run_script'
       runner: 'node' | 'python' | 'shell'
       command: string

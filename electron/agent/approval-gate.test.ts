@@ -24,3 +24,15 @@ test('blocks tool calls in confirm-external mode', () => {
   assert.equal(result.requiresApproval, true)
   assert.equal(result.request?.title, 'Call filesystem.read_file')
 })
+
+test('blocks executable skill use in confirm-external mode', () => {
+  const gate = new ApprovalGate()
+
+  const result = gate.evaluate('confirm-external', {
+    type: 'use_skill',
+    skillId: 'repo-summary',
+  })
+
+  assert.equal(result.requiresApproval, true)
+  assert.equal(result.request?.title, 'Run Skill repo-summary')
+})

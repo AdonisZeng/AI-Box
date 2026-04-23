@@ -67,6 +67,8 @@ test('feeds tool results back into the planner before finishing', async () => {
   assert.equal(result.status, 'completed')
   assert.equal(plannerInputs.length, 2)
   assert.equal(plannerInputs[1]?.observations.length, 1)
+  assert.equal(result.events.some((event) => event.type === 'step.started'), true)
+  assert.equal(result.events.some((event) => event.type === 'step.completed'), true)
 })
 
 test('emits skill selection and records the skill observation before finishing', async () => {
@@ -228,4 +230,93 @@ test('resumes the pending action after approval', async () => {
 
   assert.equal(resumed?.status, 'completed')
   assert.equal(resumed?.observations.length, 1)
+})
+
+test('pauses executable skill use in confirm-external mode before running it', async () => {
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: {
+      load: async () => [
+        {
+          id: 'repo-summary',
+          name: 'repo-summary',
+          description: 'Summarize repositories',
+          rootDir: 'C:/Users/33664/.agents/skills/repo-summary',
+          tags: ['code'],
+          isExecutable: true,
+          allowedMcpTools: [],
+          entrypoints: [{ runner: 'node', command: 'scripts/run.js' }],
+        },
+      ],
+    },
+    skillExecutor: {
+      execute: async () => ({
+        status: 'success' as const,
+        summary: 'repo-summary completed',
+        rawExcerpt: 'summary-ready',
+        observation: {
+          type: 'skill_result',
+          actionId: 'skill-repo-summary',
+          name: 'repo-summary',
+          status: 'success',
+          summary: 'repo-summary completed',
+          data: { stdout: 'summary-ready' },
+          rawExcerpt: 'summary-ready',
+          artifacts: [],
+        },
+      }),
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not be called in this test')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: {
+      evaluate: (mode, action) =>
+        mode === 'confirm-external' &&
+        (action.type === 'call_tool' ||
+          action.type === 'run_script' ||
+          action.type === 'use_skill')
+          ? {
+              requiresApproval: true,
+              request: {
+                actionId: 'skill-step',
+                title:
+                  action.type === 'use_skill'
+                    ? `Run Skill ${action.skillId}`
+                    : 'External action',
+                details: 'Confirm external action',
+              },
+            }
+          : { requiresApproval: false, request: null },
+    },
+    planner: {
+      next: async (input) =>
+        input.observations.length === 0
+          ? {
+              type: 'use_skill' as const,
+              skillId: 'repo-summary',
+              summary: 'Run repo-summary',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Skill execution complete.',
+            },
+    },
+  })
+
+  const blocked = await runtime.start({
+    ...createRequest('confirm-external'),
+    mcpServers: [],
+  })
+  assert.equal(blocked.status, 'awaiting-approval')
+  assert.equal(blocked.approval.request?.title, 'Run Skill repo-summary')
+  assert.equal(blocked.observations.length, 0)
+
+  const resumed = await runtime.approveAction(blocked.id, 'skill-step')
+  assert.equal(resumed?.status, 'completed')
+  assert.equal(resumed?.observations[0]?.type, 'skill_result')
 })
