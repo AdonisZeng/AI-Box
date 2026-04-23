@@ -48,8 +48,11 @@ coverage
 .stylelintcache
 
 # Misc
-.superpowers
-.worktrees
+.superpowers/
+.worktrees/
+docs/
+design-system/
+.claude/
 
 # Codex
 .codex/
