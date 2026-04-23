@@ -1,4 +1,7 @@
 import * as assert from 'node:assert/strict'
+import { rmSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   TaskSessionManager,
@@ -241,4 +244,294 @@ test('updates structured planning state with one active item', () => {
       ]),
     /at most one in_progress/
   )
+})
+
+test('proactive compaction preserves first and last two messages', () => {
+  const manager = new TaskSessionManager()
+  const session = manager.create({
+    prompt: 'Test compaction',
+    mode: 'auto',
+    provider: {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: 'qwen3',
+      apiType: 'openai',
+      enabled: true,
+    },
+    mcpServers: [],
+  })
+
+  // Add 5 more messages to have 6 total (first + 5 more)
+  manager.recordAssistantDecision(session.id, { type: 'call_tool', toolName: 'tool1', summary: 'step1' })
+  manager.recordObservationWriteBack(session.id, {
+    type: 'tool_result',
+    actionId: 'tool1',
+    name: 'tool1',
+    status: 'success',
+    summary: 'step1',
+    data: {},
+    rawExcerpt: 'result1',
+    artifacts: [],
+  })
+  manager.recordAssistantDecision(session.id, { type: 'call_tool', toolName: 'tool2', summary: 'step2' })
+  manager.recordObservationWriteBack(session.id, {
+    type: 'tool_result',
+    actionId: 'tool2',
+    name: 'tool2',
+    status: 'success',
+    summary: 'step2',
+    data: {},
+    rawExcerpt: 'result2',
+    artifacts: [],
+  })
+  manager.recordAssistantDecision(session.id, { type: 'call_tool', toolName: 'tool3', summary: 'step3' })
+  manager.recordObservationWriteBack(session.id, {
+    type: 'tool_result',
+    actionId: 'tool3',
+    name: 'tool3',
+    status: 'success',
+    summary: 'step3',
+    data: {},
+    rawExcerpt: 'result3',
+    artifacts: [],
+  })
+
+  const beforeCount = manager.get(session.id)?.loop.messages.length
+  assert.equal(beforeCount, 7)
+
+  manager.compactLoopProactive(session.id, 'too long')
+  const after = manager.get(session.id)
+
+  assert.equal(after?.loop.messages.length, 4)
+  assert.equal(after?.loop.messages[0]?.role, 'user')
+  assert.match(String(after?.loop.messages[1]?.content), /proactive compaction/)
+  assert.equal(after?.loop.messages[2]?.role, 'assistant')
+  assert.equal(after?.loop.messages[3]?.role, 'user')
+  assert.equal(after?.loop.compactionCount, 1)
+})
+
+test('cleanup removes oldest completed sessions exceeding max', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ai-box-sessions-'))
+  const manager = new TaskSessionManager({
+    maxSessions: 3,
+    cleanupAgeMs: 0,
+    sessionsRoot: root,
+  })
+
+  // Create 5 completed sessions with distinct past timestamps
+  const ids: string[] = []
+  const baseTime = Date.now()
+  for (let i = 0; i < 5; i++) {
+    const session = manager.create({
+      prompt: `task ${i}`,
+      mode: 'auto',
+      provider: {
+        id: 'lmstudio',
+        name: 'LMStudio',
+        baseURL: 'http://127.0.0.1:1234/v1',
+        apiKey: '',
+        model: 'qwen3',
+        apiType: 'openai',
+        enabled: true,
+      },
+      mcpServers: [],
+    })
+    // Force distinct lastActivity by manipulating the creation event timestamp (past)
+    const pastTime = baseTime - (5 - i) * 1000
+    session.events[0]!.timestamp = pastTime
+    session.loop.messages[0]!.timestamp = pastTime
+    ids.push(session.id)
+    // Simulate completion by rejecting
+    manager.reject(session.id)
+  }
+
+  // Create a new session to trigger cleanup
+  manager.create({
+    prompt: 'trigger',
+    mode: 'auto',
+    provider: {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: 'qwen3',
+      apiType: 'openai',
+      enabled: true,
+    },
+    mcpServers: [],
+  })
+
+  // Remove 3 oldest to get down to maxSessions=3 (ids[3], ids[4], trigger)
+  assert.equal(manager.get(ids[0]), undefined)
+  assert.equal(manager.get(ids[1]), undefined)
+  assert.equal(manager.get(ids[2]), undefined)
+  assert.ok(manager.get(ids[3]))
+  assert.ok(manager.get(ids[4]))
+
+  rmSync(root, { recursive: true })
+})
+
+test('cleanup never removes running sessions', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ai-box-sessions-'))
+  const manager = new TaskSessionManager({
+    maxSessions: 2,
+    cleanupAgeMs: 0,
+    sessionsRoot: root,
+  })
+
+  const baseTime = Date.now()
+
+  const running = manager.create({
+    prompt: 'running',
+    mode: 'auto',
+    provider: {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: 'qwen3',
+      apiType: 'openai',
+      enabled: true,
+    },
+    mcpServers: [],
+  })
+
+  const completed = manager.create({
+    prompt: 'completed',
+    mode: 'auto',
+    provider: {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: 'qwen3',
+      apiType: 'openai',
+      enabled: true,
+    },
+    mcpServers: [],
+  })
+  completed.events[0]!.timestamp = baseTime - 2000
+  completed.loop.messages[0]!.timestamp = baseTime - 2000
+  manager.reject(completed.id)
+
+  // Create another completed session to trigger cleanup
+  const another = manager.create({
+    prompt: 'another',
+    mode: 'auto',
+    provider: {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: 'qwen3',
+      apiType: 'openai',
+      enabled: true,
+    },
+    mcpServers: [],
+  })
+  another.events[0]!.timestamp = baseTime - 1000
+  another.loop.messages[0]!.timestamp = baseTime - 1000
+  manager.reject(another.id)
+
+  assert.ok(manager.get(running.id))
+  assert.equal(manager.get(completed.id), undefined)
+
+  rmSync(root, { recursive: true })
+})
+
+test('persist and load sessions', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ai-box-sessions-'))
+
+  // Create and persist a completed session
+  const manager1 = new TaskSessionManager({ sessionsRoot: root })
+  const session = manager1.create({
+    prompt: 'persist me',
+    mode: 'auto',
+    provider: {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: 'qwen3',
+      apiType: 'openai',
+      enabled: true,
+    },
+    mcpServers: [],
+  })
+  manager1.reject(session.id)
+
+  // Load in a new manager instance
+  const manager2 = new TaskSessionManager({ sessionsRoot: root })
+  const loaded = manager2.get(session.id)
+
+  assert.ok(loaded)
+  assert.equal(loaded?.prompt, 'persist me')
+  assert.equal(loaded?.status, 'rejected')
+
+  rmSync(root, { recursive: true })
+})
+
+test('running sessions are marked failed on load', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ai-box-sessions-'))
+
+  const manager1 = new TaskSessionManager({ sessionsRoot: root })
+  const session = manager1.create({
+    prompt: 'running task',
+    mode: 'auto',
+    provider: {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: 'qwen3',
+      apiType: 'openai',
+      enabled: true,
+    },
+    mcpServers: [],
+  })
+  // Do not finalize - simulate abrupt shutdown
+  manager1['persistSession'](session)
+
+  const manager2 = new TaskSessionManager({ sessionsRoot: root })
+  const loaded = manager2.get(session.id)
+
+  assert.equal(loaded?.status, 'failed')
+  const failedEvent = loaded?.events.find((e) => e.type === 'task.failed')
+  assert.ok(failedEvent)
+  assert.match(
+    (failedEvent?.payload as { message?: string })?.message ?? '',
+    /Interrupted by app restart/
+  )
+
+  rmSync(root, { recursive: true })
+})
+
+test('finalize persists completed and failed sessions only', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ai-box-sessions-'))
+  const manager = new TaskSessionManager({ sessionsRoot: root })
+
+  const running = manager.create({
+    prompt: 'running',
+    mode: 'auto',
+    provider: {
+      id: 'lmstudio',
+      name: 'LMStudio',
+      baseURL: 'http://127.0.0.1:1234/v1',
+      apiKey: '',
+      model: 'qwen3',
+      apiType: 'openai',
+      enabled: true,
+    },
+    mcpServers: [],
+  })
+
+  manager.finalize(running.id)
+
+  // Running sessions should not be persisted
+  const manager2 = new TaskSessionManager({ sessionsRoot: root })
+  assert.equal(manager2.get(running.id), undefined)
+
+  rmSync(root, { recursive: true })
 })

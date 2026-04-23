@@ -1,8 +1,9 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from 'yaml'
 
-const DEFAULT_SKILL_ROOT = 'C:\\Users\\33664\\.agents\\skills'
+const DEFAULT_SKILL_ROOT = join(homedir(), '.agents', 'skills')
 
 export interface AgentSkillEntrypoint {
   runner: 'node' | 'python' | 'shell'

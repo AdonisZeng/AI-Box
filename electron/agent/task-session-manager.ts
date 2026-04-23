@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type {
   AgentApprovalRequest,
   AgentObservation,
@@ -13,9 +16,28 @@ export type CreateTaskSessionInput = AgentStartTaskRequest
 
 const LOOP_RESULT_COMPACTION_THRESHOLD = 1000
 const LOOP_RESULT_COMPACTION_PREVIEW = 700
+const DEFAULT_MAX_SESSIONS = 50
+const DEFAULT_CLEANUP_AGE_MS = 60 * 60 * 1000 // 1 hour
+const DEFAULT_SESSIONS_ROOT = join(homedir(), '.agents', 'sessions')
+
+export interface TaskSessionManagerOptions {
+  maxSessions?: number
+  cleanupAgeMs?: number
+  sessionsRoot?: string
+}
 
 export class TaskSessionManager {
   private sessions = new Map<string, AgentTaskSession>()
+  private maxSessions: number
+  private cleanupAgeMs: number
+  private sessionsRoot: string
+
+  constructor(options: TaskSessionManagerOptions = {}) {
+    this.maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS
+    this.cleanupAgeMs = options.cleanupAgeMs ?? DEFAULT_CLEANUP_AGE_MS
+    this.sessionsRoot = options.sessionsRoot ?? DEFAULT_SESSIONS_ROOT
+    this.loadSessions()
+  }
 
   create(input: CreateTaskSessionInput): AgentTaskSession {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -60,6 +82,7 @@ export class TaskSessionManager {
     }
 
     this.sessions.set(id, session)
+    this.maybeCleanup()
     return session
   }
 
@@ -178,6 +201,31 @@ export class TaskSessionManager {
     session.loop.transitionReason = null
   }
 
+  compactLoopProactive(taskId: string, reason: string): void {
+    const session = this.require(taskId)
+    const timestamp = Date.now()
+    const firstMessage = session.loop.messages[0]
+
+    if (!firstMessage || session.loop.messages.length <= 3) {
+      return
+    }
+
+    const lastMessages = session.loop.messages.slice(-2)
+    const removedCount = session.loop.messages.length - 1 - lastMessages.length
+
+    session.loop.messages = [
+      firstMessage,
+      {
+        role: 'user' as const,
+        content: `[proactive compaction: ${removedCount} messages removed, ${reason}]`,
+        timestamp,
+      },
+      ...lastMessages,
+    ]
+    session.loop.compactionCount += 1
+    session.loop.transitionReason = null
+  }
+
   setAwaitingApproval(
     taskId: string,
     request: AgentApprovalRequest,
@@ -203,6 +251,84 @@ export class TaskSessionManager {
     session.status = 'rejected'
     session.approval = { state: 'resolved', request: null }
     session.pendingAction = null
+    this.persistSession(session)
+  }
+
+  finalize(taskId: string): void {
+    const session = this.require(taskId)
+    if (session.status === 'completed' || session.status === 'failed' || session.status === 'rejected') {
+      this.persistSession(session)
+    }
+  }
+
+  private maybeCleanup(): void {
+    if (this.sessions.size <= this.maxSessions) {
+      return
+    }
+
+    const now = Date.now()
+    const completedStatuses = new Set(['completed', 'failed', 'rejected'])
+    const candidates: Array<{ id: string; lastActivity: number }> = []
+
+    for (const [id, session] of this.sessions) {
+      if (!completedStatuses.has(session.status)) {
+        continue
+      }
+
+      const lastEvent = session.events.at(-1)
+      const lastLoopMessage = session.loop.messages.at(-1)
+      const lastActivity = Math.max(
+        lastEvent?.timestamp ?? 0,
+        typeof lastLoopMessage?.timestamp === 'number' ? lastLoopMessage.timestamp : 0
+      )
+
+      if (now - lastActivity > this.cleanupAgeMs) {
+        candidates.push({ id, lastActivity })
+      }
+    }
+
+    candidates.sort((a, b) => a.lastActivity - b.lastActivity)
+    const toRemove = this.sessions.size - this.maxSessions
+    for (let i = 0; i < Math.min(toRemove, candidates.length); i++) {
+      this.sessions.delete(candidates[i]!.id)
+    }
+  }
+
+  private loadSessions(): void {
+    if (!existsSync(this.sessionsRoot)) {
+      return
+    }
+
+    const files = readdirSync(this.sessionsRoot).filter((f) => f.endsWith('.json'))
+    for (const file of files) {
+      try {
+        const data = JSON.parse(readFileSync(join(this.sessionsRoot, file), 'utf8')) as AgentTaskSession
+        if (data.id && data.status && data.loop) {
+          // Mark running/awaiting-approval sessions as failed (interrupted by restart)
+          if (data.status === 'running' || data.status === 'awaiting-approval') {
+            data.status = 'failed'
+            data.events.push({
+              type: 'task.failed',
+              taskId: data.id,
+              timestamp: Date.now(),
+              payload: { message: 'Interrupted by app restart' },
+            })
+          }
+          this.sessions.set(data.id, data)
+        }
+      } catch {
+        // Skip corrupt session files
+      }
+    }
+  }
+
+  private persistSession(session: AgentTaskSession): void {
+    mkdirSync(this.sessionsRoot, { recursive: true })
+    writeFileSync(
+      join(this.sessionsRoot, `${session.id}.json`),
+      `${JSON.stringify(session, null, 2)}\n`,
+      'utf8'
+    )
   }
 
   private require(taskId: string): AgentTaskSession {

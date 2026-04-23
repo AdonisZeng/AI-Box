@@ -11,6 +11,7 @@ interface ToolTrace {
   arguments?: Record<string, unknown>
   result?: unknown
   summary?: string
+  traceId?: string
 }
 
 interface AgentStoreState {
@@ -107,6 +108,7 @@ export const createAgentStore = () =>
               : undefined
           const argumentsValue =
             isRecord(event.payload?.arguments) ? event.payload.arguments : undefined
+          const traceId = getTraceId(event.payload)
 
           nextState.toolCalls = [
             ...state.toolCalls,
@@ -115,6 +117,7 @@ export const createAgentStore = () =>
               summary,
               arguments: argumentsValue,
               status: 'running',
+              traceId,
             },
           ]
           nextState.logs = [
@@ -132,10 +135,12 @@ export const createAgentStore = () =>
               : undefined
           const status =
             event.payload?.status === 'error' ? 'error' : 'success'
+          const traceId = getTraceId(event.payload)
           let updated = false
 
           nextState.toolCalls = state.toolCalls.map((trace) => {
-            if (!updated && trace.name === name && trace.status === 'running') {
+            if (updated) return trace
+            if (traceId && trace.traceId === traceId) {
               updated = true
               return {
                 ...trace,
@@ -144,7 +149,15 @@ export const createAgentStore = () =>
                 summary: summary ?? trace.summary,
               }
             }
-
+            if (!traceId && trace.name === name && trace.status === 'running') {
+              updated = true
+              return {
+                ...trace,
+                status,
+                result: event.payload?.result,
+                summary: summary ?? trace.summary,
+              }
+            }
             return trace
           })
 
@@ -249,6 +262,10 @@ export const useAgentStore = createAgentStore()
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getTraceId(payload?: Record<string, unknown>): string | undefined {
+  return typeof payload?.traceId === 'string' ? payload.traceId : undefined
 }
 
 function formatStepLog(prefix: string, payload?: Record<string, unknown>): string {

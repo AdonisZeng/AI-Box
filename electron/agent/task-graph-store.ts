@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const DEFAULT_TASK_GRAPH_ROOT = 'C:\\Users\\33664\\.agents\\tasks'
+const DEFAULT_TASK_GRAPH_ROOT = join(homedir(), '.agents', 'tasks')
 const TASK_GRAPH_FILE = 'task-graph.json'
 
 export type AgentGraphTaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled'

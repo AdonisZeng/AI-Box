@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const DEFAULT_SCHEDULE_ROOT = 'C:\\Users\\33664\\.agents\\schedules'
+const DEFAULT_SCHEDULE_ROOT = join(homedir(), '.agents', 'schedules')
 const SCHEDULE_FILE = 'schedules.json'
 
 export type AgentScheduleStatus = 'active' | 'paused'

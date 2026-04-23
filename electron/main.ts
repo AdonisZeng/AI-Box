@@ -20,6 +20,7 @@ import { ScheduleStore } from './agent/schedule-store'
 import { logger } from './logger'
 import { resolveAppIconPath } from './app-icon'
 import { createProvider } from '../src/lib/providers/index'
+import { migrateLegacyPaths } from './agent/migrate-legacy-paths'
 
 let settingsWindow: BrowserWindow | null = null
 const runnerManager = new RunnerManager()
@@ -174,6 +175,8 @@ function createSettingsWindow(): void {
     settingsWindow.loadFile(filePath)
   }
 }
+
+migrateLegacyPaths()
 
 app.whenReady().then(() => {
   logger.info('app.whenReady')

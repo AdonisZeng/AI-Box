@@ -1087,3 +1087,96 @@ test('pauses executable skill use in confirm-external mode before running it', a
   assert.equal(resumed?.status, 'completed')
   assert.equal(resumed?.observations[0]?.type, 'skill_result')
 })
+
+test('fails when maxTurns is exceeded', async () => {
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not be called in this test')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    planner: {
+      next: async () => ({
+        type: 'call_tool' as const,
+        toolName: 'agent.update_plan',
+        arguments: { items: [{ content: 'step', status: 'in_progress' }] },
+        summary: 'Keep running',
+      }),
+    },
+    maxTurns: 3,
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'failed')
+  assert.equal(result.events.some((e) => e.type === 'task.failed'), true)
+  assert.match(
+    result.events.find((e) => e.type === 'task.failed')?.payload?.message as string,
+    /Maximum turns exceeded/
+  )
+})
+
+test('feeds tool call errors back to planner instead of failing the task', async () => {
+  const plannerInputs: Array<{ observations: unknown[] }> = []
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [
+        { name: 'filesystem.read_file', description: 'Read a file', inputSchema: {} },
+      ],
+      callTool: async () => {
+        throw new Error('File not found')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: { evaluate: () => ({ requiresApproval: false, request: null }) },
+    planner: {
+      next: async (input) => {
+        plannerInputs.push({ observations: input.observations })
+        if (input.observations.length === 0) {
+          return {
+            type: 'call_tool' as const,
+            toolName: 'filesystem.read_file',
+            arguments: { path: 'missing.txt' },
+            summary: 'Read missing file',
+          }
+        }
+        return {
+          type: 'finish' as const,
+          summary: 'done',
+          finalMessage: 'Recovered from tool error.',
+        }
+      },
+    },
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'completed')
+  assert.equal(plannerInputs.length, 2)
+  assert.equal(plannerInputs[1]?.observations.length, 1)
+  assert.equal((plannerInputs[1]?.observations[0] as { status: string })?.status, 'error')
+  assert.equal(
+    (plannerInputs[1]?.observations[0] as { data: { result: { error: string } } })?.data?.result
+      ?.error,
+    'File not found'
+  )
+  assert.equal(result.observations[0]?.status, 'error')
+  assert.equal(result.events.some((e) => e.type === 'tool.call.finished'), true)
+})

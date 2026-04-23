@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { RunnerManager, RunnerRequest, RunnerResult } from './runner-manager.ts'
 
-const DEFAULT_BACKGROUND_ROOT = 'C:\\Users\\33664\\.agents\\background'
+const DEFAULT_BACKGROUND_ROOT = join(homedir(), '.agents', 'background')
 const BACKGROUND_INDEX_FILE = 'background-tasks.json'
 
 export type BackgroundTaskStatus = 'running' | 'completed' | 'failed'

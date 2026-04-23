@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto'
 import type {
+  AgentActionStatus,
   AgentObservation,
   AgentPlanItem,
   AgentPendingAction,
@@ -16,18 +18,38 @@ import type {
   PlannerNextInput,
 } from './default-planner.ts'
 import type { HookRunner } from './hook-runner.ts'
-import type { AgentMemoryType } from './memory-store.ts'
+import type { AgentMemorySummary, AgentMemoryType } from './memory-store.ts'
 import type { MemoryStore } from './memory-store.ts'
 import { RecoveryController } from './recovery-controller.ts'
 import type { AgentRecoveryState } from './recovery-controller.ts'
 import type { RunnerManager } from './runner-manager.ts'
 import type { SkillExecutor } from './skill-executor.ts'
 import type { SkillRegistry } from './skill-registry.ts'
+import type { AgentSkillSummary } from './skill-registry.ts'
 import type { AgentSubagentRunResult, DefaultSubagentRunner } from './subagent-runner.ts'
 import type { ScheduleStore } from './schedule-store.ts'
 import type { AgentGraphTaskStatus, TaskGraphStore } from './task-graph-store.ts'
 import type { TaskSessionManager } from './task-session-manager.ts'
 import type { ToolBroker } from './tool-broker.ts'
+import {
+  AGENT_UPDATE_PLAN_TOOL_NAME,
+  AGENT_TASK_TOOL_NAME,
+  AGENT_LOAD_SKILL_TOOL_NAME,
+  AGENT_SAVE_MEMORY_TOOL_NAME,
+  AGENT_TASK_CREATE_TOOL_NAME,
+  AGENT_TASK_UPDATE_TOOL_NAME,
+  AGENT_TASK_GET_TOOL_NAME,
+  AGENT_TASK_LIST_TOOL_NAME,
+  AGENT_BACKGROUND_RUN_TOOL_NAME,
+  AGENT_BACKGROUND_CHECK_TOOL_NAME,
+  AGENT_SCHEDULE_CREATE_TOOL_NAME,
+  AGENT_SCHEDULE_LIST_TOOL_NAME,
+  AGENT_SCHEDULE_CHECK_TOOL_NAME,
+  BUILT_IN_AGENT_TOOLS,
+  isTaskGraphTool,
+  isBackgroundTool,
+  isScheduleTool,
+} from './built-in-tool-registry.ts'
 
 export interface AgentRuntimeDeps {
   sessions: TaskSessionManager
@@ -47,204 +69,29 @@ export interface AgentRuntimeDeps {
   backgroundTasks?: Pick<BackgroundTaskManager, 'start' | 'check'>
   scheduleStore?: Pick<ScheduleStore, 'create' | 'list' | 'checkDue'>
   capabilityRouter?: CapabilityRouter
+  maxTurns?: number
 }
 
 type TaskEventListener = (event: AgentTaskEvent) => void
 
-const AGENT_UPDATE_PLAN_TOOL_NAME = 'agent.update_plan'
-const AGENT_TASK_TOOL_NAME = 'agent.task'
-const AGENT_LOAD_SKILL_TOOL_NAME = 'agent.load_skill'
-const AGENT_SAVE_MEMORY_TOOL_NAME = 'agent.save_memory'
-const AGENT_TASK_CREATE_TOOL_NAME = 'agent.task_create'
-const AGENT_TASK_UPDATE_TOOL_NAME = 'agent.task_update'
-const AGENT_TASK_GET_TOOL_NAME = 'agent.task_get'
-const AGENT_TASK_LIST_TOOL_NAME = 'agent.task_list'
-const AGENT_BACKGROUND_RUN_TOOL_NAME = 'agent.background_run'
-const AGENT_BACKGROUND_CHECK_TOOL_NAME = 'agent.background_check'
-const AGENT_SCHEDULE_CREATE_TOOL_NAME = 'agent.schedule_create'
-const AGENT_SCHEDULE_LIST_TOOL_NAME = 'agent.schedule_list'
-const AGENT_SCHEDULE_CHECK_TOOL_NAME = 'agent.schedule_check'
-const AGENT_UPDATE_PLAN_TOOL: MCPTool = {
-  name: AGENT_UPDATE_PLAN_TOOL_NAME,
-  description:
-    'Update the current task todo list. Use it for multi-step work and keep at most one item in_progress.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      items: {
-        type: 'array',
-        description: 'Complete replacement list of current task planning items.',
-        items: {
-          type: 'object',
-          properties: {
-            content: { type: 'string' },
-            status: { enum: ['pending', 'in_progress', 'completed'] },
-            activeForm: { type: 'string' },
-          },
-          required: ['content', 'status'],
-        },
-      },
-    },
-    required: ['items'],
-  },
+const DEFAULT_MAX_TURNS = 50
+const LOOP_CONTEXT_THRESHOLD = 8000
+
+interface PlannerContextCache {
+  skills: AgentSkillSummary[]
+  memories: AgentMemorySummary[]
+  tools: MCPTool[]
+  skillsHash: string
+  memoriesHash: string
+  mcpServersHash: string
 }
-const AGENT_TASK_TOOL: MCPTool = {
-  name: AGENT_TASK_TOOL_NAME,
-  description: 'Run an isolated one-shot subtask with a clean context and return its summary.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      prompt: { type: 'string' },
-      description: { type: 'string' },
-      tools: {
-        type: 'array',
-        items: { type: 'string' },
-      },
-    },
-    required: ['prompt'],
-  },
-}
-const AGENT_LOAD_SKILL_TOOL: MCPTool = {
-  name: AGENT_LOAD_SKILL_TOOL_NAME,
-  description: 'Load the full SKILL.md instructions for a locally available skill by id.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      skillId: { type: 'string' },
-    },
-    required: ['skillId'],
-  },
-}
-const AGENT_SAVE_MEMORY_TOOL: MCPTool = {
-  name: AGENT_SAVE_MEMORY_TOOL_NAME,
-  description: 'Save durable, reusable user, project, feedback, or reference memory.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      name: { type: 'string' },
-      type: { enum: ['user', 'feedback', 'project', 'reference'] },
-      description: { type: 'string' },
-      content: { type: 'string' },
-    },
-    required: ['name', 'type', 'description', 'content'],
-  },
-}
-const AGENT_TASK_CREATE_TOOL: MCPTool = {
-  name: AGENT_TASK_CREATE_TOOL_NAME,
-  description: 'Create a durable task graph item for long-running or dependent work.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      title: { type: 'string' },
-      description: { type: 'string' },
-      blockedBy: { type: 'array', items: { type: 'string' } },
-    },
-    required: ['title', 'description'],
-  },
-}
-const AGENT_TASK_UPDATE_TOOL: MCPTool = {
-  name: AGENT_TASK_UPDATE_TOOL_NAME,
-  description: 'Update a durable task graph item status, details, or blockers.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      id: { type: 'string' },
-      title: { type: 'string' },
-      description: { type: 'string' },
-      status: { enum: ['todo', 'in_progress', 'done', 'cancelled'] },
-      blockedBy: { type: 'array', items: { type: 'string' } },
-    },
-    required: ['id'],
-  },
-}
-const AGENT_TASK_GET_TOOL: MCPTool = {
-  name: AGENT_TASK_GET_TOOL_NAME,
-  description: 'Load one durable task graph item by id.',
-  inputSchema: {
-    type: 'object',
-    properties: { id: { type: 'string' } },
-    required: ['id'],
-  },
-}
-const AGENT_TASK_LIST_TOOL: MCPTool = {
-  name: AGENT_TASK_LIST_TOOL_NAME,
-  description: 'List durable task graph items, optionally only ready work.',
-  inputSchema: {
-    type: 'object',
-    properties: { readyOnly: { type: 'boolean' } },
-  },
-}
-const AGENT_BACKGROUND_RUN_TOOL: MCPTool = {
-  name: AGENT_BACKGROUND_RUN_TOOL_NAME,
-  description: 'Start a long-running Node, Python, or Shell command in the background.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      runner: { enum: ['node', 'python', 'shell'] },
-      command: { type: 'string' },
-      cwd: { type: 'string' },
-      summary: { type: 'string' },
-    },
-    required: ['runner', 'command', 'cwd', 'summary'],
-  },
-}
-const AGENT_BACKGROUND_CHECK_TOOL: MCPTool = {
-  name: AGENT_BACKGROUND_CHECK_TOOL_NAME,
-  description: 'Check a previously started background task by id.',
-  inputSchema: {
-    type: 'object',
-    properties: { id: { type: 'string' } },
-    required: ['id'],
-  },
-}
-const AGENT_SCHEDULE_CREATE_TOOL: MCPTool = {
-  name: AGENT_SCHEDULE_CREATE_TOOL_NAME,
-  description: 'Create a local interval schedule that injects due notifications into the agent.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      name: { type: 'string' },
-      prompt: { type: 'string' },
-      everyMinutes: { type: 'number' },
-      startAt: { type: 'number' },
-    },
-    required: ['name', 'prompt', 'everyMinutes'],
-  },
-}
-const AGENT_SCHEDULE_LIST_TOOL: MCPTool = {
-  name: AGENT_SCHEDULE_LIST_TOOL_NAME,
-  description: 'List local Agent schedules.',
-  inputSchema: { type: 'object', properties: {} },
-}
-const AGENT_SCHEDULE_CHECK_TOOL: MCPTool = {
-  name: AGENT_SCHEDULE_CHECK_TOOL_NAME,
-  description: 'Check local Agent schedules and return due notifications.',
-  inputSchema: {
-    type: 'object',
-    properties: { now: { type: 'number' } },
-  },
-}
-const BUILT_IN_AGENT_TOOLS: MCPTool[] = [
-  AGENT_UPDATE_PLAN_TOOL,
-  AGENT_TASK_TOOL,
-  AGENT_LOAD_SKILL_TOOL,
-  AGENT_SAVE_MEMORY_TOOL,
-  AGENT_TASK_CREATE_TOOL,
-  AGENT_TASK_UPDATE_TOOL,
-  AGENT_TASK_GET_TOOL,
-  AGENT_TASK_LIST_TOOL,
-  AGENT_BACKGROUND_RUN_TOOL,
-  AGENT_BACKGROUND_CHECK_TOOL,
-  AGENT_SCHEDULE_CREATE_TOOL,
-  AGENT_SCHEDULE_LIST_TOOL,
-  AGENT_SCHEDULE_CHECK_TOOL,
-]
 
 export class AgentRuntime {
   private deps: AgentRuntimeDeps
   private recovery: RecoveryController
   private capabilityRouter: CapabilityRouter
   private listeners = new Set<TaskEventListener>()
+  private contextCache: PlannerContextCache | null = null
 
   constructor(deps: AgentRuntimeDeps) {
     this.deps = deps
@@ -337,20 +184,87 @@ export class AgentRuntime {
         provider: session.provider,
         mcpServers: session.mcpServers,
       }
-      const skills = await this.deps.skillRegistry.load()
-      const memories = (await this.deps.memoryStore?.list()) ?? []
-      const tools = this.capabilityRouter.listTools({
+      let skills = await this.deps.skillRegistry.load()
+      let memories = (await this.deps.memoryStore?.list()) ?? []
+      let tools = this.capabilityRouter.listTools({
         builtInTools: BUILT_IN_AGENT_TOOLS,
         externalTools: await this.deps.toolBroker.listTools(request.mcpServers),
         mcpServers: request.mcpServers,
       })
+
+      this.contextCache = {
+        skills,
+        memories,
+        tools,
+        skillsHash: JSON.stringify(skills.map((s) => s.id)),
+        memoriesHash: JSON.stringify(memories.map((m) => m.id)),
+        mcpServersHash: JSON.stringify(request.mcpServers.map((s) => s.id)),
+      }
+
       let nextAction = resumedAction ?? null
       const recoveryState = this.recovery.createState()
+      let turnCount = 0
 
       for (;;) {
+        turnCount += 1
+        if (turnCount > (this.deps.maxTurns ?? DEFAULT_MAX_TURNS)) {
+          const current = this.requireSession(taskId)
+          current.status = 'failed'
+          this.emitEvent(taskId, 'task.failed', {
+            message: 'Maximum turns exceeded',
+          })
+          return current
+        }
+
         const current = this.requireSession(taskId)
+
+        const serializedLoop = JSON.stringify(current.loop.messages)
+        if (serializedLoop.length > LOOP_CONTEXT_THRESHOLD) {
+          this.deps.sessions.compactLoopProactive(
+            taskId,
+            'loop messages exceeded threshold'
+          )
+          this.emitEvent(taskId, 'task.recovery', {
+            kind: 'compact',
+            reason: 'Proactive context compaction triggered',
+          })
+        }
+
         const pendingAction = nextAction
         const isResumingPendingAction = pendingAction !== null
+
+        // Refresh cached context if underlying data changed
+        if (!isResumingPendingAction && this.contextCache) {
+          const currentSkills = await this.deps.skillRegistry.load()
+          const currentMemories = (await this.deps.memoryStore?.list()) ?? []
+          const currentSkillsHash = JSON.stringify(currentSkills.map((s) => s.id))
+          const currentMemoriesHash = JSON.stringify(currentMemories.map((m) => m.id))
+
+          if (currentSkillsHash !== this.contextCache.skillsHash) {
+            skills = currentSkills
+            tools = this.capabilityRouter.listTools({
+              builtInTools: BUILT_IN_AGENT_TOOLS,
+              externalTools: await this.deps.toolBroker.listTools(request.mcpServers),
+              mcpServers: request.mcpServers,
+            })
+            this.contextCache = {
+              ...this.contextCache,
+              skills,
+              tools,
+              skillsHash: currentSkillsHash,
+            }
+          }
+
+          if (currentMemoriesHash !== this.contextCache.memoriesHash) {
+            memories = currentMemories
+            this.contextCache = {
+              ...this.contextCache,
+              memories,
+              memoriesHash: currentMemoriesHash,
+            }
+          }
+        }
+
         const decision =
           isResumingPendingAction
             ? this.pendingActionToDecision(pendingAction)
@@ -394,6 +308,7 @@ export class AgentRuntime {
             summary: decision.summary,
             finalMessage: decision.finalMessage,
           })
+          this.deps.sessions.finalize(taskId)
           return current
         }
 
@@ -519,225 +434,102 @@ export class AgentRuntime {
         }
 
         if (decision.toolName === AGENT_TASK_TOOL_NAME) {
-          if (!skipApproval) {
-            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
-          }
-          this.emitEvent(taskId, 'tool.call.started', {
-            name: decision.toolName,
-            arguments: decision.arguments,
+          await this.runBuiltInTool(taskId, decision, actionId, skipApproval, {
+            execute: async () => ({
+              result: await this.runSubagentTool(
+                taskId,
+                request.provider,
+                tools,
+                decision.arguments
+              ),
+            }),
           })
-          const result = await this.runSubagentTool(
-            taskId,
-            request.provider,
-            tools,
-            decision.arguments
-          )
-          const observation = this.createBuiltInToolObservation(
-            actionId,
-            decision.toolName,
-            decision.summary,
-            result
-          )
-
-          this.deps.sessions.addObservation(taskId, observation)
-          this.deps.sessions.recordObservationWriteBack(taskId, observation)
-          this.deps.sessions.incrementPlanningStaleness(taskId)
-          this.emitEvent(taskId, 'tool.call.finished', {
-            name: decision.toolName,
-            summary: decision.summary,
-            result,
-            status: 'success',
-          })
-          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
           continue
         }
 
         if (decision.toolName === AGENT_LOAD_SKILL_TOOL_NAME) {
-          if (!skipApproval) {
-            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
-          }
-          this.emitEvent(taskId, 'tool.call.started', {
-            name: decision.toolName,
-            arguments: decision.arguments,
+          await this.runBuiltInTool(taskId, decision, actionId, skipApproval, {
+            execute: async () => ({
+              result: await this.loadSkillTool(decision.arguments),
+            }),
           })
-          const result = await this.loadSkillTool(decision.arguments)
-          const observation = this.createBuiltInToolObservation(
-            actionId,
-            decision.toolName,
-            decision.summary,
-            result
-          )
-
-          this.deps.sessions.addObservation(taskId, observation)
-          this.deps.sessions.recordObservationWriteBack(taskId, observation)
-          this.deps.sessions.incrementPlanningStaleness(taskId)
-          this.emitEvent(taskId, 'tool.call.finished', {
-            name: decision.toolName,
-            summary: decision.summary,
-            result,
-            status: 'success',
-          })
-          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
           continue
         }
 
         if (decision.toolName === AGENT_SAVE_MEMORY_TOOL_NAME) {
-          if (!skipApproval) {
-            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
-          }
-          this.emitEvent(taskId, 'tool.call.started', {
-            name: decision.toolName,
-            arguments: decision.arguments,
+          await this.runBuiltInTool(taskId, decision, actionId, skipApproval, {
+            execute: async () => {
+              const result = await this.saveMemoryTool(decision.arguments)
+              return {
+                result,
+                extraEvents: [
+                  {
+                    type: 'memory.saved',
+                    payload: { memoryId: result.id, type: result.type },
+                  },
+                ],
+              }
+            },
           })
-          const result = await this.saveMemoryTool(decision.arguments)
-          const observation = this.createBuiltInToolObservation(
-            actionId,
-            decision.toolName,
-            decision.summary,
-            result
-          )
-
-          this.deps.sessions.addObservation(taskId, observation)
-          this.deps.sessions.recordObservationWriteBack(taskId, observation)
-          this.deps.sessions.incrementPlanningStaleness(taskId)
-          this.emitEvent(taskId, 'memory.saved', {
-            memoryId: result.id,
-            type: result.type,
-          })
-          this.emitEvent(taskId, 'tool.call.finished', {
-            name: decision.toolName,
-            summary: decision.summary,
-            result,
-            status: 'success',
-          })
-          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
           continue
         }
 
-        if (this.isTaskGraphTool(decision.toolName)) {
-          if (!skipApproval) {
-            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
-          }
-          this.emitEvent(taskId, 'tool.call.started', {
-            name: decision.toolName,
-            arguments: decision.arguments,
+        if (isTaskGraphTool(decision.toolName)) {
+          await this.runBuiltInTool(taskId, decision, actionId, skipApproval, {
+            execute: async () => {
+              const result = await this.runTaskGraphTool(decision.toolName, decision.arguments)
+              return {
+                result,
+                extraEvents: [
+                  {
+                    type: 'graph.task.updated',
+                    payload: { toolName: decision.toolName, result },
+                  },
+                ],
+              }
+            },
           })
-          const result = await this.runTaskGraphTool(decision.toolName, decision.arguments)
-          const observation = this.createBuiltInToolObservation(
-            actionId,
-            decision.toolName,
-            decision.summary,
-            result
-          )
-
-          this.deps.sessions.addObservation(taskId, observation)
-          this.deps.sessions.recordObservationWriteBack(taskId, observation)
-          this.deps.sessions.incrementPlanningStaleness(taskId)
-          this.emitEvent(taskId, 'graph.task.updated', {
-            toolName: decision.toolName,
-            result,
-          })
-          this.emitEvent(taskId, 'tool.call.finished', {
-            name: decision.toolName,
-            summary: decision.summary,
-            result,
-            status: 'success',
-          })
-          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
           continue
         }
 
-        if (this.isBackgroundTool(decision.toolName)) {
-          if (!skipApproval) {
-            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
-          }
-          this.emitEvent(taskId, 'tool.call.started', {
-            name: decision.toolName,
-            arguments: decision.arguments,
+        if (isBackgroundTool(decision.toolName)) {
+          await this.runBuiltInTool(taskId, decision, actionId, skipApproval, {
+            execute: async () => {
+              const result = await this.runBackgroundTool(decision.toolName, decision.arguments)
+              return {
+                result,
+                extraEvents: [
+                  {
+                    type: 'background.task.updated',
+                    payload: { toolName: decision.toolName, result },
+                  },
+                ],
+              }
+            },
           })
-          const result = await this.runBackgroundTool(decision.toolName, decision.arguments)
-          const observation = this.createBuiltInToolObservation(
-            actionId,
-            decision.toolName,
-            decision.summary,
-            result
-          )
-
-          this.deps.sessions.addObservation(taskId, observation)
-          this.deps.sessions.recordObservationWriteBack(taskId, observation)
-          this.deps.sessions.incrementPlanningStaleness(taskId)
-          this.emitEvent(taskId, 'background.task.updated', {
-            toolName: decision.toolName,
-            result,
-          })
-          this.emitEvent(taskId, 'tool.call.finished', {
-            name: decision.toolName,
-            summary: decision.summary,
-            result,
-            status: 'success',
-          })
-          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
           continue
         }
 
-        if (this.isScheduleTool(decision.toolName)) {
-          if (!skipApproval) {
-            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
-          }
-          this.emitEvent(taskId, 'tool.call.started', {
-            name: decision.toolName,
-            arguments: decision.arguments,
+        if (isScheduleTool(decision.toolName)) {
+          await this.runBuiltInTool(taskId, decision, actionId, skipApproval, {
+            execute: async () => ({
+              result: await this.runScheduleTool(
+                taskId,
+                decision.toolName,
+                decision.arguments
+              ),
+            }),
           })
-          const result = await this.runScheduleTool(taskId, decision.toolName, decision.arguments)
-          const observation = this.createBuiltInToolObservation(
-            actionId,
-            decision.toolName,
-            decision.summary,
-            result
-          )
-
-          this.deps.sessions.addObservation(taskId, observation)
-          this.deps.sessions.recordObservationWriteBack(taskId, observation)
-          this.deps.sessions.incrementPlanningStaleness(taskId)
-          this.emitEvent(taskId, 'tool.call.finished', {
-            name: decision.toolName,
-            summary: decision.summary,
-            result,
-            status: 'success',
-          })
-          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
           continue
         }
 
         if (decision.toolName === AGENT_UPDATE_PLAN_TOOL_NAME) {
-          if (!skipApproval) {
-            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
-          }
-          this.emitEvent(taskId, 'tool.call.started', {
-            name: decision.toolName,
-            arguments: decision.arguments,
+          await this.runBuiltInTool(taskId, decision, actionId, skipApproval, {
+            execute: async () => ({
+              result: this.updatePlanningFromTool(taskId, decision.arguments),
+            }),
+            skipStaleness: true,
           })
-          const result = this.updatePlanningFromTool(taskId, decision.arguments)
-          const observation: AgentObservation = {
-            type: 'tool_result',
-            actionId: actionId ?? this.createActionId('call_tool'),
-            name: decision.toolName,
-            status: 'success',
-            summary: decision.summary,
-            data: { result },
-            rawExcerpt: this.toExcerpt(result),
-            artifacts: [],
-          }
-
-          this.deps.sessions.addObservation(taskId, observation)
-          this.deps.sessions.recordObservationWriteBack(taskId, observation)
-          this.emitEvent(taskId, 'tool.call.finished', {
-            name: decision.toolName,
-            summary: decision.summary,
-            result,
-            status: 'success',
-          })
-          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
           continue
         }
 
@@ -768,20 +560,33 @@ export class AgentRuntime {
 
         const toolRoute = this.resolveToolRoute(request, decision.toolName)
         await this.runPreToolHook(taskId, decision.toolName, decision.arguments)
+        const traceId = randomUUID()
         this.emitEvent(taskId, 'tool.call.started', {
           name: decision.toolName,
           arguments: decision.arguments,
+          traceId,
         })
-        const result = await this.deps.toolBroker.callTool(
-          toolRoute.server,
-          toolRoute.toolName,
-          decision.arguments
-        )
+
+        let result: unknown
+        let toolStatus: AgentActionStatus = 'success'
+        try {
+          result = await this.deps.toolBroker.callTool(
+            toolRoute.server,
+            toolRoute.toolName,
+            decision.arguments
+          )
+        } catch (error) {
+          toolStatus = 'error'
+          result = {
+            error: error instanceof Error ? error.message : String(error),
+          }
+        }
+
         const observation: AgentObservation = {
           type: 'tool_result',
           actionId: actionId ?? this.createActionId('call_tool'),
           name: decision.toolName,
-          status: 'success',
+          status: toolStatus,
           summary: decision.summary,
           data: { result },
           rawExcerpt: this.toExcerpt(result),
@@ -796,13 +601,15 @@ export class AgentRuntime {
           name: decision.toolName,
           summary: decision.summary,
           result,
-          status: 'success',
+          status: toolStatus,
+          traceId,
         })
         this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
       }
     } catch (error) {
       const failed = this.requireSession(taskId)
       failed.status = 'failed'
+      this.deps.sessions.finalize(taskId)
       this.emitEvent(taskId, 'task.failed', {
         message: error instanceof Error ? error.message : String(error),
       })
@@ -1017,6 +824,54 @@ export class AgentRuntime {
     }
   }
 
+  private async runBuiltInTool(
+    taskId: string,
+    decision: PlannerDecision,
+    actionId: string | null,
+    skipApproval: boolean,
+    options: {
+      execute: () => Promise<{
+        result: unknown
+        extraEvents?: Array<{ type: AgentTaskEvent['type']; payload: Record<string, unknown> }>
+      }>
+      skipStaleness?: boolean
+    }
+  ): Promise<void> {
+    if (!skipApproval) {
+      this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
+    }
+    const traceId = randomUUID()
+    this.emitEvent(taskId, 'tool.call.started', {
+      name: decision.toolName,
+      arguments: decision.arguments,
+      traceId,
+    })
+    const { result, extraEvents } = await options.execute()
+    const observation = this.createBuiltInToolObservation(
+      actionId,
+      decision.toolName,
+      decision.summary,
+      result
+    )
+
+    this.deps.sessions.addObservation(taskId, observation)
+    this.deps.sessions.recordObservationWriteBack(taskId, observation)
+    if (!options.skipStaleness) {
+      this.deps.sessions.incrementPlanningStaleness(taskId)
+    }
+    for (const event of extraEvents ?? []) {
+      this.emitEvent(taskId, event.type, event.payload)
+    }
+    this.emitEvent(taskId, 'tool.call.finished', {
+      name: decision.toolName,
+      summary: decision.summary,
+      result,
+      status: 'success',
+      traceId,
+    })
+    this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
+  }
+
   private async runSubagentTool(
     parentTaskId: string,
     provider: AgentStartTaskRequest['provider'],
@@ -1082,15 +937,6 @@ export class AgentRuntime {
     return saved
   }
 
-  private isTaskGraphTool(toolName: string): boolean {
-    return (
-      toolName === AGENT_TASK_CREATE_TOOL_NAME ||
-      toolName === AGENT_TASK_UPDATE_TOOL_NAME ||
-      toolName === AGENT_TASK_GET_TOOL_NAME ||
-      toolName === AGENT_TASK_LIST_TOOL_NAME
-    )
-  }
-
   private async runTaskGraphTool(
     toolName: string,
     args: Record<string, unknown>
@@ -1125,10 +971,6 @@ export class AgentRuntime {
     })
   }
 
-  private isBackgroundTool(toolName: string): boolean {
-    return toolName === AGENT_BACKGROUND_RUN_TOOL_NAME || toolName === AGENT_BACKGROUND_CHECK_TOOL_NAME
-  }
-
   private async runBackgroundTool(
     toolName: string,
     args: Record<string, unknown>
@@ -1147,14 +989,6 @@ export class AgentRuntime {
     }
 
     return this.deps.backgroundTasks.check(this.requireStringArg(args, 'id'))
-  }
-
-  private isScheduleTool(toolName: string): boolean {
-    return (
-      toolName === AGENT_SCHEDULE_CREATE_TOOL_NAME ||
-      toolName === AGENT_SCHEDULE_LIST_TOOL_NAME ||
-      toolName === AGENT_SCHEDULE_CHECK_TOOL_NAME
-    )
   }
 
   private async runScheduleTool(

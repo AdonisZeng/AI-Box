@@ -219,3 +219,78 @@ test('tracks step lifecycle entries in execution logs', () => {
   assert.equal(logs.some((entry) => entry.includes('开始步骤')), true)
   assert.equal(logs.some((entry) => entry.includes('完成步骤')), true)
 })
+
+test('matches concurrent tool calls by traceId', () => {
+  const store = createAgentStore()
+
+  // Start two concurrent calls to the same tool
+  store.getState().applyEvent({
+    type: 'tool.call.started',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      name: 'filesystem.read_file',
+      arguments: { path: 'a.txt' },
+      summary: 'Read A',
+      traceId: 'trace-a',
+    },
+  })
+  store.getState().applyEvent({
+    type: 'tool.call.started',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      name: 'filesystem.read_file',
+      arguments: { path: 'b.txt' },
+      summary: 'Read B',
+      traceId: 'trace-b',
+    },
+  })
+
+  // Finish the second one first (out of order)
+  store.getState().applyEvent({
+    type: 'tool.call.finished',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      name: 'filesystem.read_file',
+      summary: 'Read B',
+      result: { text: 'b-content' },
+      traceId: 'trace-b',
+    },
+  })
+
+  const state = store.getState()
+  assert.equal(state.toolCalls.length, 2)
+  assert.equal(state.toolCalls[0]?.status, 'running')
+  assert.equal(state.toolCalls[0]?.traceId, 'trace-a')
+  assert.equal(state.toolCalls[1]?.status, 'success')
+  assert.equal(state.toolCalls[1]?.traceId, 'trace-b')
+  assert.deepEqual(state.toolCalls[1]?.result, { text: 'b-content' })
+})
+
+test('falls back to name matching when traceId is absent', () => {
+  const store = createAgentStore()
+
+  store.getState().applyEvent({
+    type: 'tool.call.started',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      name: 'filesystem.read_file',
+      arguments: { path: 'package.json' },
+    },
+  })
+  store.getState().applyEvent({
+    type: 'tool.call.finished',
+    taskId: 'task-1',
+    timestamp: Date.now(),
+    payload: {
+      name: 'filesystem.read_file',
+      result: { text: 'ok' },
+    },
+  })
+
+  assert.equal(store.getState().toolCalls[0]?.status, 'success')
+  assert.equal(store.getState().toolCalls[0]?.traceId, undefined)
+})

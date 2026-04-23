@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parse, stringify } from 'yaml'
 
-const DEFAULT_MEMORY_ROOT = 'C:\\Users\\33664\\.agents\\memory'
+const DEFAULT_MEMORY_ROOT = join(homedir(), '.agents', 'memory')
 const MEMORY_INDEX_FILE = 'MEMORY.md'
 
 export type AgentMemoryType = 'user' | 'feedback' | 'project' | 'reference'
