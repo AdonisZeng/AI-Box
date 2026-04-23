@@ -1,9 +1,50 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { registerAgentIpc } from './agent/ipc'
+import { AgentRuntime } from './agent/runtime'
+import { TaskSessionManager } from './agent/task-session-manager'
+import { SkillRegistry } from './agent/skill-registry'
+import { SkillExecutor } from './agent/skill-executor'
+import { ToolBroker } from './agent/tool-broker'
+import { RunnerManager } from './agent/runner-manager'
+import { ApprovalGate } from './agent/approval-gate'
+import { DefaultPlanner } from './agent/default-planner'
 import { logger } from './logger'
+import { createProvider } from '../src/lib/providers/index'
 
 let settingsWindow: BrowserWindow | null = null
+const runnerManager = new RunnerManager()
+const agentRuntime = new AgentRuntime({
+  sessions: new TaskSessionManager(),
+  planner: new DefaultPlanner({
+    callModel: async (messages, input) => {
+      if (!input.provider) {
+        throw new Error('Planner provider is required.')
+      }
+
+      const provider = createProvider(input.provider)
+      if (!provider) {
+        throw new Error(`Could not create provider ${input.provider.id}`)
+      }
+
+      return provider.chat(messages)
+    },
+  }),
+  skillRegistry: new SkillRegistry(),
+  skillExecutor: new SkillExecutor({ runner: runnerManager }),
+  toolBroker: new ToolBroker(),
+  runner: runnerManager,
+  approvalGate: new ApprovalGate(),
+})
+
+function sendAgentEvent(channel: 'agent:task-event', payload: unknown): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send(channel, payload)
+    }
+  }
+}
 
 function createWindow(): void {
   logger.info('创建主窗口')
@@ -103,6 +144,9 @@ function createSettingsWindow(): void {
 app.whenReady().then(() => {
   logger.info('app.whenReady')
   electronApp.setAppUserModelId('com.aibox.app')
+  registerAgentIpc(ipcMain, agentRuntime, {
+    sendEvent: sendAgentEvent,
+  })
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

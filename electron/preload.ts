@@ -5,4 +5,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openSettingsWindow: () => ipcRenderer.invoke('open-settings-window'),
   log: (level: string, message: string, ...args: unknown[]) =>
     ipcRenderer.invoke('log-message', level, message, ...args),
+  agent: {
+    startTask: (request: unknown) => ipcRenderer.invoke('agent:start-task', request),
+    getTaskState: (taskId: string) => ipcRenderer.invoke('agent:get-task-state', taskId),
+    approveAction: (taskId: string, actionId: string) =>
+      ipcRenderer.invoke('agent:approve-action', taskId, actionId),
+    rejectAction: (taskId: string, actionId: string) =>
+      ipcRenderer.invoke('agent:reject-action', taskId, actionId),
+    cancelTask: (taskId: string) => ipcRenderer.invoke('agent:cancel-task', taskId),
+    onTaskEvent: (listener: (event: unknown) => void) => {
+      const wrapped = (_event: unknown, payload: unknown) => listener(payload)
+      ipcRenderer.on('agent:task-event', wrapped)
+      return () => ipcRenderer.removeListener('agent:task-event', wrapped)
+    },
+  },
 })

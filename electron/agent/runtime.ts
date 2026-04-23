@@ -83,6 +83,30 @@ export class AgentRuntime {
     return this.deps.sessions.get(taskId) ?? null
   }
 
+  cancelTask(taskId: string): AgentTaskSession | null {
+    const session = this.deps.sessions.get(taskId)
+    if (!session) {
+      return null
+    }
+
+    if (
+      session.status === 'completed' ||
+      session.status === 'failed' ||
+      session.status === 'rejected'
+    ) {
+      return session
+    }
+
+    session.status = 'failed'
+    session.approval = { state: 'resolved', request: null }
+    session.pendingAction = null
+    this.emitEvent(taskId, 'task.failed', {
+      message: 'Task cancelled by user.',
+    })
+
+    return session
+  }
+
   private async continueSession(
     taskId: string,
     resumedAction?: AgentPendingAction
@@ -100,7 +124,7 @@ export class AgentRuntime {
       const tools = await this.deps.toolBroker.listTools(request.mcpServers)
       let nextAction = resumedAction ?? null
 
-      while (true) {
+      for (;;) {
         const current = this.requireSession(taskId)
         const decision =
           nextAction !== null
