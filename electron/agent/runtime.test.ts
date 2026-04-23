@@ -34,6 +34,7 @@ test('feeds tool results back into the planner before finishing', async () => {
   const plannerInputs: Array<{
     observations: unknown[]
     loop: { turnCount: number; transitionReason: string | null }
+    planning: { roundsSinceUpdate: number }
   }> = []
   const runtime = new AgentRuntime({
     sessions: new TaskSessionManager(),
@@ -56,6 +57,9 @@ test('feeds tool results back into the planner before finishing', async () => {
           loop: {
             turnCount: input.loop.turnCount,
             transitionReason: input.loop.transitionReason,
+          },
+          planning: {
+            roundsSinceUpdate: input.planning.roundsSinceUpdate,
           },
         })
         return plannerInputs.length === 1
@@ -84,6 +88,10 @@ test('feeds tool results back into the planner before finishing', async () => {
     { turnCount: 1, transitionReason: null },
     { turnCount: 2, transitionReason: 'tool_result' },
   ])
+  assert.deepEqual(plannerInputs.map((input) => input.planning), [
+    { roundsSinceUpdate: 0 },
+    { roundsSinceUpdate: 1 },
+  ])
   assert.equal(result.loop.turnCount, 2)
   assert.equal(result.loop.transitionReason, null)
   assert.equal(result.loop.messages[0]?.role, 'user')
@@ -110,6 +118,230 @@ test('feeds tool results back into the planner before finishing', async () => {
   assert.equal(result.loop.messages[3]?.role, 'assistant')
   assert.equal(result.events.some((event) => event.type === 'step.started'), true)
   assert.equal(result.events.some((event) => event.type === 'step.completed'), true)
+})
+
+test('updates session planning through the built-in planning tool', async () => {
+  const plannerInputs: Array<{
+    tools: string[]
+    planning: { items: unknown[]; roundsSinceUpdate: number }
+  }> = []
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not handle the built-in planning tool')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: {
+      evaluate: () => {
+        throw new Error('planning updates are internal and should not require approval')
+      },
+    },
+    planner: {
+      next: async (input) => {
+        plannerInputs.push({
+          tools: input.tools.map((tool) => tool.name),
+          planning: {
+            items: input.planning.items,
+            roundsSinceUpdate: input.planning.roundsSinceUpdate,
+          },
+        })
+
+        return input.observations.length === 0
+          ? {
+              type: 'call_tool' as const,
+              toolName: 'agent.update_plan',
+              arguments: {
+                items: [
+                  {
+                    content: 'Inspect Agent planning state',
+                    status: 'completed',
+                  },
+                  {
+                    content: 'Wire update_plan into the loop',
+                    status: 'in_progress',
+                    activeForm: 'Wiring update_plan into the loop',
+                  },
+                ],
+              },
+              summary: 'Update the current task plan',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Planning state updated.',
+            }
+      },
+    },
+  })
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = []
+  runtime.onTaskEvent((event) => events.push(event))
+
+  const result = await runtime.start({
+    ...createRequest('confirm-external'),
+    mcpServers: [],
+  })
+
+  assert.equal(result.status, 'completed')
+  assert.equal(plannerInputs[0]?.tools.includes('agent.update_plan'), true)
+  assert.deepEqual(plannerInputs.map((input) => input.planning.roundsSinceUpdate), [0, 0])
+  assert.deepEqual(result.planning.items, [
+    {
+      content: 'Inspect Agent planning state',
+      status: 'completed',
+    },
+    {
+      content: 'Wire update_plan into the loop',
+      status: 'in_progress',
+      activeForm: 'Wiring update_plan into the loop',
+    },
+  ])
+  assert.equal(result.observations[0]?.name, 'agent.update_plan')
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === 'plan.generated' &&
+        Array.isArray(event.payload?.steps) &&
+        event.payload.steps.includes('[in_progress] Wiring update_plan into the loop')
+    ),
+    true
+  )
+})
+
+test('runs isolated subtask through the built-in task tool', async () => {
+  const subagentInputs: Array<{ prompt: string; parentTaskId: string; availableTools: string[] }> = []
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: { load: async () => [] },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [{ name: 'local.read_file', description: 'Read local files', inputSchema: {} }],
+      callTool: async () => {
+        throw new Error('tool broker should not handle the built-in task tool')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: {
+      evaluate: () => {
+        throw new Error('agent.task is internal and should not require approval')
+      },
+    },
+    subagentRunner: {
+      run: async (input) => {
+        subagentInputs.push({
+          prompt: input.prompt,
+          parentTaskId: input.parentTaskId,
+          availableTools: input.availableTools.map((tool) => tool.name),
+        })
+        return {
+          summary: 'Subtask found the package name.',
+          observations: [{ text: 'isolated context only' }],
+        }
+      },
+    },
+    planner: {
+      next: async (input) =>
+        input.observations.length === 0
+          ? {
+              type: 'call_tool' as const,
+              toolName: 'agent.task',
+              arguments: {
+                prompt: 'Find the package name without using parent context.',
+                description: 'Inspect package metadata',
+                tools: ['local.read_file'],
+              },
+              summary: 'Delegate package inspection',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Subtask complete.',
+            },
+    },
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'completed')
+  assert.equal(subagentInputs.length, 1)
+  assert.equal(subagentInputs[0]?.prompt, 'Find the package name without using parent context.')
+  assert.deepEqual(subagentInputs[0]?.availableTools, ['local.read_file'])
+  assert.equal(result.observations[0]?.name, 'agent.task')
+  assert.match(result.observations[0]?.rawExcerpt ?? '', /Subtask found/)
+})
+
+test('loads skill instructions on demand through the built-in skill loader', async () => {
+  const runtime = new AgentRuntime({
+    sessions: new TaskSessionManager(),
+    skillRegistry: {
+      load: async () => [
+        {
+          id: 'repo-summary',
+          name: 'repo-summary',
+          description: 'Summarize repositories',
+          rootDir: 'C:/skills/repo-summary',
+          tags: ['code'],
+          isExecutable: false,
+          allowedMcpTools: [],
+          entrypoints: [],
+        },
+      ],
+      loadContent: async (skillId: string) => ({
+        id: skillId,
+        content: '# Repo Summary\n\nUse this skill to summarize the repository.',
+      }),
+    },
+    skillExecutor: {
+      execute: async () => {
+        throw new Error('skill executor should not be called in this test')
+      },
+    },
+    toolBroker: {
+      listTools: async () => [],
+      callTool: async () => {
+        throw new Error('tool broker should not handle the built-in skill loader')
+      },
+    },
+    runner: { run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) },
+    approvalGate: {
+      evaluate: () => {
+        throw new Error('agent.load_skill is internal and should not require approval')
+      },
+    },
+    planner: {
+      next: async (input) =>
+        input.observations.length === 0
+          ? {
+              type: 'call_tool' as const,
+              toolName: 'agent.load_skill',
+              arguments: { skillId: 'repo-summary' },
+              summary: 'Load repo-summary instructions',
+            }
+          : {
+              type: 'finish' as const,
+              summary: 'done',
+              finalMessage: 'Skill instructions loaded.',
+            },
+    },
+  })
+
+  const result = await runtime.start(createRequest())
+
+  assert.equal(result.status, 'completed')
+  assert.equal(result.observations[0]?.name, 'agent.load_skill')
+  assert.match(result.observations[0]?.rawExcerpt ?? '', /# Repo Summary/)
 })
 
 test('emits skill selection and records the skill observation before finishing', async () => {

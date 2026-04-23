@@ -10,6 +10,7 @@ import { ToolBroker } from './agent/tool-broker'
 import { RunnerManager } from './agent/runner-manager'
 import { ApprovalGate } from './agent/approval-gate'
 import { DefaultPlanner } from './agent/default-planner'
+import { DefaultSubagentRunner } from './agent/subagent-runner'
 import { logger } from './logger'
 import { resolveAppIconPath } from './app-icon'
 import { createProvider } from '../src/lib/providers/index'
@@ -37,6 +38,16 @@ const agentRuntime = new AgentRuntime({
   toolBroker: new ToolBroker(),
   runner: runnerManager,
   approvalGate: new ApprovalGate(),
+  subagentRunner: new DefaultSubagentRunner({
+    callModel: async (messages, input) => {
+      const provider = createProvider(input.provider)
+      if (!provider) {
+        throw new Error(`Could not create provider ${input.provider.id}`)
+      }
+
+      return provider.chat(messages)
+    },
+  }),
 })
 
 function sendAgentEvent(channel: 'agent:task-event', payload: unknown): void {

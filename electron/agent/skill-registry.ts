@@ -20,6 +20,11 @@ export interface AgentSkillSummary {
   entrypoints: AgentSkillEntrypoint[]
 }
 
+export interface AgentSkillContent {
+  id: string
+  content: string
+}
+
 interface ParsedSkillFrontmatter {
   name: string
   description: string
@@ -47,6 +52,19 @@ export class SkillRegistry {
       .map((entry) => join(this.rootDir, entry))
       .filter((fullPath) => statSync(fullPath).isDirectory())
       .flatMap((skillDir) => this.loadSkill(skillDir))
+  }
+
+  async loadContent(skillId: string): Promise<AgentSkillContent | null> {
+    const skills = await this.load()
+    const skill = skills.find((item) => item.id === skillId)
+    if (!skill) {
+      return null
+    }
+
+    return {
+      id: skill.id,
+      content: readFileSync(join(skill.rootDir, 'SKILL.md'), 'utf8'),
+    }
   }
 
   private loadSkill(skillDir: string): AgentSkillSummary[] {

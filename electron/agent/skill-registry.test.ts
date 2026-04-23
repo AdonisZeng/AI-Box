@@ -25,6 +25,10 @@ test('loads summaries from SKILL.md and optional agents/ai-box.yaml', async () =
   assert.equal(skills[0]?.id, 'repo-summary')
   assert.equal(skills[0]?.isExecutable, true)
   assert.deepEqual(skills[0]?.allowedMcpTools, ['filesystem.read_file'])
+
+  const loaded = await registry.loadContent('repo-summary')
+  assert.equal(loaded?.id, 'repo-summary')
+  assert.match(loaded?.content ?? '', /# Repo Summary/)
 })
 
 test('ignores directories without SKILL.md', async () => {

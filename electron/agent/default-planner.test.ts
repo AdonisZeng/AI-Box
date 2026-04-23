@@ -23,6 +23,16 @@ test('serializes task context, skills, tools, and observations into prompt messa
       },
     ],
     tools: [{ name: 'filesystem.read_file', description: 'Read a file', inputSchema: {} }],
+    planning: {
+      roundsSinceUpdate: 3,
+      items: [
+        {
+          content: 'Inspect package.json',
+          status: 'in_progress',
+          activeForm: 'Inspecting package.json',
+        },
+      ],
+    },
     loop: {
       turnCount: 2,
       transitionReason: 'tool_result',
@@ -66,6 +76,12 @@ test('serializes task context, skills, tools, and observations into prompt messa
   assert.match(messages[1]?.content ?? '', /confirm-external/)
   assert.match(messages[1]?.content ?? '', /"turnCount": 2/)
   assert.match(messages[1]?.content ?? '', /"transitionReason": "tool_result"/)
+  assert.match(messages[0]?.content ?? '', /agent\.update_plan/)
+  assert.match(messages[0]?.content ?? '', /agent\.task/)
+  assert.match(messages[0]?.content ?? '', /agent\.load_skill/)
+  assert.match(messages[1]?.content ?? '', /"planningState"/)
+  assert.match(messages[1]?.content ?? '', /"planningReminder"/)
+  assert.match(messages[1]?.content ?? '', /"contextBudget"/)
 })
 
 test('parses JSON planner output into a normalized action', () => {
@@ -101,6 +117,10 @@ test('uses the injected model caller to produce the next planner decision', asyn
     mode: 'auto',
     skills: [],
     tools: [],
+    planning: {
+      items: [],
+      roundsSinceUpdate: 0,
+    },
     loop: {
       turnCount: 1,
       transitionReason: null,

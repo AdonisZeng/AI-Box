@@ -11,6 +11,18 @@ export type AgentTaskStatus =
 export type AgentActionStatus = 'success' | 'error'
 export type AgentObservationType = 'tool_result' | 'skill_result' | 'script_result'
 export type AgentLoopTransitionReason = AgentObservationType | null
+export type AgentPlanItemStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface AgentPlanItem {
+  content: string
+  status: AgentPlanItemStatus
+  activeForm?: string
+}
+
+export interface AgentPlanningState {
+  items: AgentPlanItem[]
+  roundsSinceUpdate: number
+}
 
 export interface AgentLoopMessage {
   role: 'user' | 'assistant'
@@ -22,6 +34,7 @@ export interface AgentLoopState {
   messages: AgentLoopMessage[]
   turnCount: number
   transitionReason: AgentLoopTransitionReason
+  compactionCount: number
 }
 
 export interface AgentApprovalRequest {
@@ -101,6 +114,7 @@ export interface AgentTaskSession {
   status: AgentTaskStatus
   events: AgentTaskEvent[]
   observations: AgentObservation[]
+  planning: AgentPlanningState
   loop: AgentLoopState
   approval: {
     state: 'idle' | 'pending' | 'resolved'

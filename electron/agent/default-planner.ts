@@ -3,6 +3,7 @@ import type {
   AgentExecutionMode,
   AgentLoopState,
   AgentObservation,
+  AgentPlanningState,
 } from '../../src/types/agent.ts'
 import type { Message, ProviderConfig } from '../../src/types/providers.ts'
 import type { AgentSkillSummary } from './skill-registry.ts'
@@ -41,6 +42,7 @@ export interface BuildPlannerMessagesInput {
   mode: AgentExecutionMode
   skills: AgentSkillSummary[]
   tools: MCPTool[]
+  planning: AgentPlanningState
   loop: AgentLoopState
   observations: AgentObservation[]
 }
@@ -104,6 +106,10 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
         'Choose exactly one next action and return only one JSON object.',
         'Allowed action types: call_tool, use_skill, run_script, finish.',
         'Only use tools and skills from the provided context.',
+        'Use agent.update_plan to maintain a concise current-task todo list for multi-step work.',
+        'Use agent.task for isolated subtasks that benefit from a clean context.',
+        'Use agent.load_skill before applying a skill when the summary is not enough.',
+        'Keep at most one planning item in_progress at a time.',
         'Treat loopState.messages as the authoritative agent loop transcript.',
         'When loopState.transitionReason is a tool, skill, or script result, use that result before deciding the next action.',
         'Include a short summary and an optional plan array when useful.',
@@ -118,6 +124,15 @@ export function buildPlannerMessages(input: BuildPlannerMessagesInput): Message[
           executionMode: input.mode,
           availableSkills: input.skills,
           availableTools: input.tools,
+          planningState: input.planning,
+          planningReminder:
+            input.planning.roundsSinceUpdate >= 3
+              ? 'The plan has not been updated for several action rounds. Call agent.update_plan if the current todo state is stale.'
+              : undefined,
+          contextBudget: {
+            activeLoopMessages: input.loop.messages.length,
+            compactionCount: input.loop.compactionCount,
+          },
           loopState: input.loop,
           observations: input.observations,
         },

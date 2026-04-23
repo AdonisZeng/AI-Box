@@ -1,10 +1,12 @@
 import type {
   AgentObservation,
+  AgentPlanItem,
   AgentPendingAction,
   AgentStartTaskRequest,
   AgentTaskEvent,
   AgentTaskSession,
 } from '../../src/types/agent.ts'
+import type { MCPTool } from '../../src/types/mcp.ts'
 import type { ApprovalGate } from './approval-gate.ts'
 import type {
   PlannerDecision,
@@ -13,6 +15,7 @@ import type {
 import type { RunnerManager } from './runner-manager.ts'
 import type { SkillExecutor } from './skill-executor.ts'
 import type { SkillRegistry } from './skill-registry.ts'
+import type { AgentSubagentRunResult, DefaultSubagentRunner } from './subagent-runner.ts'
 import type { TaskSessionManager } from './task-session-manager.ts'
 import type { ToolBroker } from './tool-broker.ts'
 
@@ -21,14 +24,70 @@ export interface AgentRuntimeDeps {
   planner: {
     next: (input: PlannerNextInput) => Promise<PlannerDecision>
   }
-  skillRegistry: Pick<SkillRegistry, 'load'>
+  skillRegistry: Pick<SkillRegistry, 'load'> & Partial<Pick<SkillRegistry, 'loadContent'>>
   skillExecutor: Pick<SkillExecutor, 'execute'>
   toolBroker: Pick<ToolBroker, 'listTools' | 'callTool'>
   runner: Pick<RunnerManager, 'run'>
   approvalGate: Pick<ApprovalGate, 'evaluate'>
+  subagentRunner?: Pick<DefaultSubagentRunner, 'run'>
 }
 
 type TaskEventListener = (event: AgentTaskEvent) => void
+
+const AGENT_UPDATE_PLAN_TOOL_NAME = 'agent.update_plan'
+const AGENT_TASK_TOOL_NAME = 'agent.task'
+const AGENT_LOAD_SKILL_TOOL_NAME = 'agent.load_skill'
+const AGENT_UPDATE_PLAN_TOOL: MCPTool = {
+  name: AGENT_UPDATE_PLAN_TOOL_NAME,
+  description:
+    'Update the current task todo list. Use it for multi-step work and keep at most one item in_progress.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      items: {
+        type: 'array',
+        description: 'Complete replacement list of current task planning items.',
+        items: {
+          type: 'object',
+          properties: {
+            content: { type: 'string' },
+            status: { enum: ['pending', 'in_progress', 'completed'] },
+            activeForm: { type: 'string' },
+          },
+          required: ['content', 'status'],
+        },
+      },
+    },
+    required: ['items'],
+  },
+}
+const AGENT_TASK_TOOL: MCPTool = {
+  name: AGENT_TASK_TOOL_NAME,
+  description: 'Run an isolated one-shot subtask with a clean context and return its summary.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      prompt: { type: 'string' },
+      description: { type: 'string' },
+      tools: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+    required: ['prompt'],
+  },
+}
+const AGENT_LOAD_SKILL_TOOL: MCPTool = {
+  name: AGENT_LOAD_SKILL_TOOL_NAME,
+  description: 'Load the full SKILL.md instructions for a locally available skill by id.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      skillId: { type: 'string' },
+    },
+    required: ['skillId'],
+  },
+}
 
 export class AgentRuntime {
   private deps: AgentRuntimeDeps
@@ -124,7 +183,12 @@ export class AgentRuntime {
         mcpServers: session.mcpServers,
       }
       const skills = await this.deps.skillRegistry.load()
-      const tools = await this.deps.toolBroker.listTools(request.mcpServers)
+      const tools = [
+        AGENT_UPDATE_PLAN_TOOL,
+        AGENT_TASK_TOOL,
+        AGENT_LOAD_SKILL_TOOL,
+        ...(await this.deps.toolBroker.listTools(request.mcpServers)),
+      ]
       let nextAction = resumedAction ?? null
 
       for (;;) {
@@ -140,6 +204,7 @@ export class AgentRuntime {
                 provider: request.provider,
                 skills,
                 tools,
+                planning: current.planning,
                 loop: current.loop,
                 observations: current.observations,
               })
@@ -212,6 +277,7 @@ export class AgentRuntime {
           }
           this.deps.sessions.addObservation(taskId, observation)
           this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.deps.sessions.incrementPlanningStaleness(taskId)
           this.emitEvent(taskId, 'script.output', {
             output: result.rawExcerpt,
           })
@@ -277,6 +343,7 @@ export class AgentRuntime {
 
           this.deps.sessions.addObservation(taskId, observation)
           this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.deps.sessions.incrementPlanningStaleness(taskId)
           this.emitEvent(taskId, 'script.output', {
             output: observation.rawExcerpt,
           })
@@ -285,6 +352,101 @@ export class AgentRuntime {
             status: observation.status,
           })
           this.emitStepCompleted(taskId, 'run_script', decision.summary, decision.command)
+          continue
+        }
+
+        if (decision.toolName === AGENT_TASK_TOOL_NAME) {
+          if (!skipApproval) {
+            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
+          }
+          this.emitEvent(taskId, 'tool.call.started', {
+            name: decision.toolName,
+            arguments: decision.arguments,
+          })
+          const result = await this.runSubagentTool(
+            taskId,
+            request.provider,
+            tools,
+            decision.arguments
+          )
+          const observation = this.createBuiltInToolObservation(
+            actionId,
+            decision.toolName,
+            decision.summary,
+            result
+          )
+
+          this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.deps.sessions.incrementPlanningStaleness(taskId)
+          this.emitEvent(taskId, 'tool.call.finished', {
+            name: decision.toolName,
+            summary: decision.summary,
+            result,
+            status: 'success',
+          })
+          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
+          continue
+        }
+
+        if (decision.toolName === AGENT_LOAD_SKILL_TOOL_NAME) {
+          if (!skipApproval) {
+            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
+          }
+          this.emitEvent(taskId, 'tool.call.started', {
+            name: decision.toolName,
+            arguments: decision.arguments,
+          })
+          const result = await this.loadSkillTool(decision.arguments)
+          const observation = this.createBuiltInToolObservation(
+            actionId,
+            decision.toolName,
+            decision.summary,
+            result
+          )
+
+          this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.deps.sessions.incrementPlanningStaleness(taskId)
+          this.emitEvent(taskId, 'tool.call.finished', {
+            name: decision.toolName,
+            summary: decision.summary,
+            result,
+            status: 'success',
+          })
+          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
+          continue
+        }
+
+        if (decision.toolName === AGENT_UPDATE_PLAN_TOOL_NAME) {
+          if (!skipApproval) {
+            this.emitStepStarted(taskId, 'call_tool', decision.summary, decision.toolName)
+          }
+          this.emitEvent(taskId, 'tool.call.started', {
+            name: decision.toolName,
+            arguments: decision.arguments,
+          })
+          const result = this.updatePlanningFromTool(taskId, decision.arguments)
+          const observation: AgentObservation = {
+            type: 'tool_result',
+            actionId: actionId ?? this.createActionId('call_tool'),
+            name: decision.toolName,
+            status: 'success',
+            summary: decision.summary,
+            data: { result },
+            rawExcerpt: this.toExcerpt(result),
+            artifacts: [],
+          }
+
+          this.deps.sessions.addObservation(taskId, observation)
+          this.deps.sessions.recordObservationWriteBack(taskId, observation)
+          this.emitEvent(taskId, 'tool.call.finished', {
+            name: decision.toolName,
+            summary: decision.summary,
+            result,
+            status: 'success',
+          })
+          this.emitStepCompleted(taskId, 'call_tool', decision.summary, decision.toolName)
           continue
         }
 
@@ -334,6 +496,7 @@ export class AgentRuntime {
 
         this.deps.sessions.addObservation(taskId, observation)
         this.deps.sessions.recordObservationWriteBack(taskId, observation)
+        this.deps.sessions.incrementPlanningStaleness(taskId)
         this.emitEvent(taskId, 'tool.call.finished', {
           name: decision.toolName,
           summary: decision.summary,
@@ -395,6 +558,121 @@ export class AgentRuntime {
       finalMessage: decision.finalMessage,
       plan: decision.plan,
     }
+  }
+
+  private updatePlanningFromTool(
+    taskId: string,
+    args: Record<string, unknown>
+  ): Record<string, unknown> {
+    const items = this.extractPlanningItems(args)
+    const planning = this.deps.sessions.updatePlanning(taskId, items)
+    this.emitEvent(taskId, 'plan.generated', {
+      steps: this.renderPlanningSteps(planning.items),
+      items: planning.items,
+      roundsSinceUpdate: planning.roundsSinceUpdate,
+    })
+
+    return planning
+  }
+
+  private extractPlanningItems(args: Record<string, unknown>): AgentPlanItem[] {
+    const items = args.items
+    if (!Array.isArray(items)) {
+      throw new Error('agent.update_plan requires an items array')
+    }
+
+    return items.map((item) => {
+      if (!this.isRecord(item)) {
+        throw new Error('agent.update_plan items must be objects')
+      }
+
+      return {
+        content: item.content,
+        status: item.status,
+        ...(typeof item.activeForm === 'string' ? { activeForm: item.activeForm } : {}),
+      } as AgentPlanItem
+    })
+  }
+
+  private renderPlanningSteps(items: AgentPlanItem[]): string[] {
+    return items.map((item) => `[${item.status}] ${item.activeForm ?? item.content}`)
+  }
+
+  private createBuiltInToolObservation(
+    actionId: string | null,
+    toolName: string,
+    summary: string,
+    result: unknown
+  ): AgentObservation {
+    return {
+      type: 'tool_result',
+      actionId: actionId ?? this.createActionId('call_tool'),
+      name: toolName,
+      status: 'success',
+      summary,
+      data: { result },
+      rawExcerpt: this.toExcerpt(result),
+      artifacts: [],
+    }
+  }
+
+  private async runSubagentTool(
+    parentTaskId: string,
+    provider: AgentStartTaskRequest['provider'],
+    tools: MCPTool[],
+    args: Record<string, unknown>
+  ): Promise<AgentSubagentRunResult> {
+    if (!this.deps.subagentRunner) {
+      throw new Error('Subagent runner is not configured')
+    }
+
+    const prompt = this.requireStringArg(args, 'prompt')
+    const description =
+      typeof args.description === 'string' && args.description.trim()
+        ? args.description.trim()
+        : undefined
+    const requestedToolNames = Array.isArray(args.tools)
+      ? args.tools
+          .filter((tool): tool is string => typeof tool === 'string' && tool.trim().length > 0)
+          .map((tool) => tool.trim())
+      : []
+    const requestedToolNameSet = new Set(requestedToolNames)
+    const availableTools = tools.filter((tool) => requestedToolNameSet.has(tool.name))
+
+    return this.deps.subagentRunner.run({
+      prompt,
+      description,
+      parentTaskId,
+      provider,
+      availableTools,
+    })
+  }
+
+  private async loadSkillTool(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const skillId = this.requireStringArg(args, 'skillId')
+    const loadContent = this.deps.skillRegistry.loadContent
+    if (!loadContent) {
+      throw new Error('Skill content loader is not configured')
+    }
+
+    const loaded = await loadContent.call(this.deps.skillRegistry, skillId)
+    if (!loaded) {
+      throw new Error(`Unknown skill: ${skillId}`)
+    }
+
+    return {
+      skillId: loaded.id,
+      content: loaded.content,
+    }
+  }
+
+  private requireStringArg(args: Record<string, unknown>, field: string): string {
+    const value = args[field]
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new Error(`${field} must be a non-empty string`)
+    }
+
+    return value.trim()
   }
 
   private createActionId(actionType: 'call_tool' | 'use_skill' | 'run_script'): string {
@@ -515,5 +793,9 @@ export class AgentRuntime {
     } catch {
       return String(value).slice(0, 500)
     }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
   }
 }

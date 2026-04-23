@@ -1,6 +1,8 @@
 import type {
   AgentApprovalRequest,
   AgentObservation,
+  AgentPlanItem,
+  AgentPlanningState,
   AgentPendingAction,
   AgentStartTaskRequest,
   AgentTaskEvent,
@@ -8,6 +10,9 @@ import type {
 } from '../../src/types/agent.ts'
 
 export type CreateTaskSessionInput = AgentStartTaskRequest
+
+const LOOP_RESULT_COMPACTION_THRESHOLD = 1000
+const LOOP_RESULT_COMPACTION_PREVIEW = 700
 
 export class TaskSessionManager {
   private sessions = new Map<string, AgentTaskSession>()
@@ -31,6 +36,10 @@ export class TaskSessionManager {
         },
       ],
       observations: [],
+      planning: {
+        items: [],
+        roundsSinceUpdate: 0,
+      },
       loop: {
         messages: [
           {
@@ -41,6 +50,7 @@ export class TaskSessionManager {
         ],
         turnCount: 1,
         transitionReason: null,
+        compactionCount: 0,
       },
       approval: {
         state: 'idle',
@@ -67,6 +77,38 @@ export class TaskSessionManager {
     session.observations.push(observation)
   }
 
+  updatePlanning(taskId: string, items: AgentPlanItem[]): AgentPlanningState {
+    const session = this.require(taskId)
+    const normalized = items.map((item) => ({
+      content: this.requireNonEmptyString(item.content, 'content'),
+      status: this.normalizePlanStatus(item.status),
+      ...(item.activeForm && item.activeForm.trim()
+        ? { activeForm: item.activeForm.trim() }
+        : {}),
+    }))
+    const activeCount = normalized.filter((item) => item.status === 'in_progress').length
+    if (activeCount > 1) {
+      throw new Error('Agent planning can contain at most one in_progress item')
+    }
+
+    session.planning = {
+      items: normalized,
+      roundsSinceUpdate: 0,
+    }
+
+    return session.planning
+  }
+
+  incrementPlanningStaleness(taskId: string): AgentPlanningState {
+    const session = this.require(taskId)
+    session.planning = {
+      ...session.planning,
+      roundsSinceUpdate: session.planning.roundsSinceUpdate + 1,
+    }
+
+    return session.planning
+  }
+
   recordAssistantDecision(taskId: string, decision: Record<string, unknown>): void {
     const session = this.require(taskId)
     session.loop.messages.push({
@@ -79,6 +121,7 @@ export class TaskSessionManager {
 
   recordObservationWriteBack(taskId: string, observation: AgentObservation): void {
     const session = this.require(taskId)
+    const content = this.toLoopResultContent(session, observation.rawExcerpt)
     session.loop.messages.push({
       role: 'user',
       content: [
@@ -88,7 +131,7 @@ export class TaskSessionManager {
           status: observation.status,
           name: observation.name,
           summary: observation.summary,
-          content: observation.rawExcerpt,
+          content,
           artifacts: observation.artifacts,
         },
       ],
@@ -131,5 +174,33 @@ export class TaskSessionManager {
       throw new Error(`Unknown task session: ${taskId}`)
     }
     return session
+  }
+
+  private normalizePlanStatus(status: unknown): AgentPlanItem['status'] {
+    if (status === 'pending' || status === 'in_progress' || status === 'completed') {
+      return status
+    }
+
+    throw new Error(`Unsupported planning status: ${String(status)}`)
+  }
+
+  private requireNonEmptyString(value: unknown, field: string): string {
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new Error(`Planning item ${field} must be a non-empty string`)
+    }
+
+    return value.trim()
+  }
+
+  private toLoopResultContent(session: AgentTaskSession, content: string): string {
+    if (content.length <= LOOP_RESULT_COMPACTION_THRESHOLD) {
+      return content
+    }
+
+    session.loop.compactionCount += 1
+    return [
+      content.slice(0, LOOP_RESULT_COMPACTION_PREVIEW),
+      `[content compacted: original ${content.length} chars, preview ${LOOP_RESULT_COMPACTION_PREVIEW} chars]`,
+    ].join('\n')
   }
 }
