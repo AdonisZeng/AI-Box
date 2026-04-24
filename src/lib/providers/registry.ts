@@ -1,4 +1,4 @@
-import type { ProviderConfig, LLMProvider } from './types'
+import type { ProviderConfig, LLMProvider, ProviderCategory } from './types'
 import { lmstudioDefinition } from './lmstudio'
 import { openaiDefinition } from './openai'
 import { anthropicDefinition } from './anthropic'
@@ -26,6 +26,22 @@ export type ProviderType = (typeof providerRegistry)[number]['id']
 const registryMap = new Map<string, ProviderDefinition>(
   providerRegistry.map((def) => [def.id, def])
 )
+
+export const CATEGORY_PROVIDER_MAP: Record<ProviderCategory, ProviderType[]> = {
+  text: ['lmstudio', 'openai', 'anthropic', 'custom', 'minimax'],
+  image: ['minimax', 'custom'],
+  video: ['minimax', 'custom'],
+  voice: ['minimax', 'custom'],
+  music: ['minimax', 'custom'],
+}
+
+export const CATEGORY_LABELS: Record<ProviderCategory, string> = {
+  text: '文本生成',
+  image: '图片生成',
+  video: '视频生成',
+  voice: '语音合成',
+  music: '音乐生成',
+}
 
 export function getProviderDefinition(id: string): ProviderDefinition | undefined {
   return registryMap.get(id)
@@ -68,4 +84,8 @@ export function isValidProviderType(value: unknown): value is ProviderType {
 
 export function getProviderTypeList(): string[] {
   return providerRegistry.map((def) => def.id)
+}
+
+export function getProvidersForCategory(category: ProviderCategory): ProviderType[] {
+  return CATEGORY_PROVIDER_MAP[category]
 }

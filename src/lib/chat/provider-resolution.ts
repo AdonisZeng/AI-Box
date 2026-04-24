@@ -1,16 +1,5 @@
-export type ProviderType = 'lmstudio' | 'openai' | 'anthropic' | 'custom' | 'minimax'
-
-export interface ProviderConfig {
-  id: ProviderType
-  name: string
-  baseURL: string
-  apiKey: string
-  model: string
-  apiType: 'openai' | 'anthropic' | 'custom'
-  enabled: boolean
-}
-
-const providerTypes: ProviderType[] = ['lmstudio', 'openai', 'anthropic', 'custom', 'minimax']
+import type { ProviderType, ProviderConfig } from '@/lib/providers'
+import { isValidProviderType } from '@/lib/providers'
 
 export function resolveChatProviderId(activeProvider: ProviderType): ProviderType {
   return activeProvider
@@ -29,6 +18,7 @@ export interface ResolvedChatProvider {
 
 interface PersistedSettingsSnapshot {
   activeProvider?: ProviderType
+  activeProviders?: { text?: ProviderType }
   providers?: ProviderConfig[]
 }
 
@@ -38,7 +28,10 @@ export function resolveLatestChatProvider({
   persistedSettings,
 }: ResolveLatestChatProviderInput): ResolvedChatProvider {
   const persisted = parsePersistedSettings(persistedSettings)
-  const providerId = persisted.activeProvider ?? resolveChatProviderId(activeProvider)
+  const providerId =
+    persisted.activeProviders?.text ??
+    persisted.activeProvider ??
+    resolveChatProviderId(activeProvider)
   const latestProviders = persisted.providers ?? providers
 
   return {
@@ -58,7 +51,10 @@ function parsePersistedSettings(raw: string | null | undefined): PersistedSettin
     const parsed = JSON.parse(raw) as Record<string, unknown>
     const state = isRecord(parsed.state) ? parsed.state : {}
     return {
-      activeProvider: isProviderType(state.activeProvider) ? state.activeProvider : undefined,
+      activeProvider: isValidProviderType(state.activeProvider) ? state.activeProvider : undefined,
+      activeProviders: isRecord(state.activeProviders)
+        ? { text: isValidProviderType(state.activeProviders.text) ? state.activeProviders.text : undefined }
+        : undefined,
       providers: Array.isArray(state.providers)
         ? state.providers.filter(isProviderConfig)
         : undefined,
@@ -71,7 +67,7 @@ function parsePersistedSettings(raw: string | null | undefined): PersistedSettin
 function isProviderConfig(value: unknown): value is ProviderConfig {
   return (
     isRecord(value) &&
-    isProviderType(value.id) &&
+    typeof value.id === 'string' &&
     typeof value.name === 'string' &&
     typeof value.baseURL === 'string' &&
     typeof value.apiKey === 'string' &&
@@ -79,10 +75,6 @@ function isProviderConfig(value: unknown): value is ProviderConfig {
     (value.apiType === 'openai' || value.apiType === 'anthropic' || value.apiType === 'custom') &&
     typeof value.enabled === 'boolean'
   )
-}
-
-function isProviderType(value: unknown): value is ProviderType {
-  return typeof value === 'string' && providerTypes.includes(value as ProviderType)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

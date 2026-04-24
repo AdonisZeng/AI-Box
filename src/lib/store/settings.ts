@@ -1,17 +1,17 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ProviderConfig, ProviderType } from '@/lib/providers'
+import type { ProviderConfig, ProviderType, ProviderCategory } from '@/lib/providers'
 import { getDefaultProviders } from '@/lib/providers'
 import { encrypt, decrypt, isEncryptedValue } from '@/lib/crypto'
 
 interface SettingsState {
   providers: ProviderConfig[]
-  activeProvider: ProviderType
+  activeProviders: Record<ProviderCategory, ProviderType>
   theme: 'light' | 'dark'
   _decryptedKeys: Record<string, string>
 
   updateProvider: (id: ProviderType, updates: Partial<ProviderConfig>) => void
-  setActiveProvider: (id: ProviderType) => void
+  setActiveProvider: (category: ProviderCategory, id: ProviderType) => void
   setTheme: (theme: 'light' | 'dark') => void
   getProviderConfig: (id: ProviderType) => ProviderConfig | undefined
   decryptApiKeys: () => Promise<void>
@@ -20,13 +20,38 @@ interface SettingsState {
 
 const defaultProviders = getDefaultProviders()
 
+const defaultActiveProviders: Record<ProviderCategory, ProviderType> = {
+  text: 'lmstudio',
+  image: 'minimax',
+  video: 'minimax',
+  voice: 'minimax',
+  music: 'minimax',
+}
+
+function migrateMiniMaxConfig(p: ProviderConfig & { miniMaxConfig?: Record<string, string> }): ProviderConfig {
+  if (!p.miniMaxConfig) return p
+  const { miniMaxConfig, ...rest } = p
+  return {
+    ...rest,
+    categoryModels: {
+      text: miniMaxConfig.text,
+      image: miniMaxConfig.image,
+      video: miniMaxConfig.video,
+      voice: miniMaxConfig.speech,
+      music: miniMaxConfig.music,
+    },
+  }
+}
+
 function normalizeProviders(
   providers: ProviderConfig[]
 ): ProviderConfig[] {
   return providers.map((p) => {
     const def = defaultProviders.find((d) => d.id === p.id)
     if (!def) return p
-    return { ...def, ...p }
+    const merged = { ...def, ...p }
+    // Migrate old miniMaxConfig to categoryModels
+    return migrateMiniMaxConfig(merged as ProviderConfig & { miniMaxConfig?: Record<string, string> })
   })
 }
 
@@ -34,7 +59,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       providers: defaultProviders,
-      activeProvider: 'lmstudio',
+      activeProviders: defaultActiveProviders,
       theme: 'dark',
       _decryptedKeys: {},
 
@@ -54,8 +79,10 @@ export const useSettingsStore = create<SettingsState>()(
         }))
       },
 
-      setActiveProvider: (id: ProviderType) => {
-        set({ activeProvider: id })
+      setActiveProvider: (category: ProviderCategory, id: ProviderType) => {
+        set((state) => ({
+          activeProviders: { ...state.activeProviders, [category]: id },
+        }))
       },
 
       setTheme: (theme: 'light' | 'dark') => {
@@ -103,12 +130,23 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'ai-box-settings',
       merge: (persistedState, currentState) => {
-        const persisted = persistedState as Partial<SettingsState> | undefined
+        const persisted = persistedState as Partial<SettingsState> & { activeProvider?: string } | undefined
         if (!persisted) return currentState
 
         const mergedProviders = persisted.providers
           ? normalizeProviders(persisted.providers as ProviderConfig[])
           : currentState.providers
+
+        // Migrate old single activeProvider to new activeProviders
+        let activeProviders = currentState.activeProviders
+        if (persisted.activeProvider && typeof persisted.activeProvider === 'string') {
+          activeProviders = {
+            ...currentState.activeProviders,
+            text: persisted.activeProvider as ProviderType,
+          }
+        } else if (persisted.activeProviders) {
+          activeProviders = { ...currentState.activeProviders, ...persisted.activeProviders }
+        }
 
         // Build decrypted keys cache from persisted encrypted values
         const decryptedKeys: Record<string, string> = {}
@@ -125,6 +163,7 @@ export const useSettingsStore = create<SettingsState>()(
           ...currentState,
           ...persisted,
           providers: mergedProviders,
+          activeProviders,
           _decryptedKeys: {
             ...decryptedKeys,
             ...(persisted._decryptedKeys || {}),

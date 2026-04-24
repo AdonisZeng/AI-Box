@@ -49,3 +49,32 @@ test('uses the persisted provider snapshot when the chat window store is stale',
   assert.equal(latest.providerId, 'lmstudio')
   assert.equal(latest.providerConfig?.model, 'new-model')
 })
+
+test('prefers activeProviders.text over legacy activeProvider', () => {
+  const latest = resolveLatestChatProvider({
+    activeProvider: 'lmstudio',
+    providers: [],
+    persistedSettings: JSON.stringify({
+      state: {
+        activeProvider: 'lmstudio',
+        activeProviders: { text: 'openai' },
+      },
+    }),
+  })
+
+  assert.equal(latest.providerId, 'openai')
+})
+
+test('falls back to legacy activeProvider when activeProviders is absent', () => {
+  const latest = resolveLatestChatProvider({
+    activeProvider: 'lmstudio',
+    providers: [],
+    persistedSettings: JSON.stringify({
+      state: {
+        activeProvider: 'anthropic',
+      },
+    }),
+  })
+
+  assert.equal(latest.providerId, 'anthropic')
+})

@@ -1,11 +1,13 @@
 export type APICompatibility = 'openai' | 'anthropic' | 'custom'
 
-export interface MiniMaxSubModelConfig {
-  text: string
-  image: string
-  video: string
-  speech: string
-  music: string
+export type ProviderCategory = 'text' | 'image' | 'video' | 'voice' | 'music'
+
+export interface CategoryModelConfig {
+  text?: string
+  image?: string
+  video?: string
+  voice?: string
+  music?: string
 }
 
 export interface ProviderConfig {
@@ -16,7 +18,7 @@ export interface ProviderConfig {
   model: string
   apiType: APICompatibility
   enabled: boolean
-  miniMaxConfig?: MiniMaxSubModelConfig
+  categoryModels?: CategoryModelConfig
 }
 
 export interface Message {

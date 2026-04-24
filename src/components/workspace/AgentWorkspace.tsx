@@ -20,7 +20,7 @@ export function AgentWorkspace() {
   const approval = useAgentStore((state) => state.approval)
   const applyEvent = useAgentStore((state) => state.applyEvent)
   const reset = useAgentStore((state) => state.reset)
-  const activeProvider = useSettingsStore((state) => state.activeProvider)
+  const activeProvider = useSettingsStore((state) => state.activeProviders.text)
   const getProviderConfig = useSettingsStore((state) => state.getProviderConfig)
   const serverConfigs = useMCPStore((state) => state.serverConfigs)
 

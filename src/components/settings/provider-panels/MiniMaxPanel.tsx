@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import type { ProviderConfig, MiniMaxSubModelConfig } from '@/lib/providers'
+import type { ProviderConfig } from '@/lib/providers'
 
 interface MiniMaxPanelProps {
   config: ProviderConfig
@@ -18,43 +18,13 @@ const textModels = [
   'MiniMax-M2',
 ]
 
-const imageModels = ['image-01', 'image-01-live']
-
-const videoModels = [
-  'MiniMax-Hailuo-2.3',
-  'MiniMax-Hailuo-02',
-  'T2V-01-Director',
-  'T2V-01',
-]
-
-const speechModels = [
-  'speech-2.8-hd',
-  'speech-2.8-turbo',
-  'speech-2.6-hd',
-  'speech-2.6-turbo',
-  'speech-02-hd',
-  'speech-02-turbo',
-  'speech-01-hd',
-  'speech-01-turbo',
-]
-
-const musicModels = ['music-2.6', 'music-cover', 'music-2.6-free', 'music-cover-free']
-
 export function MiniMaxPanel({ config, onSave, onClose }: MiniMaxPanelProps) {
   const [baseURL, setBaseURL] = useState(config.baseURL)
   const [apiKey, setApiKey] = useState(config.apiKey)
   const [model, setModel] = useState(config.model)
-  const [miniMaxConfig, setMiniMaxConfig] = useState<MiniMaxSubModelConfig>({
-    text: 'MiniMax-M2.7',
-    image: 'image-01',
-    video: 'MiniMax-Hailuo-2.3',
-    speech: 'speech-2.8-hd',
-    music: 'music-2.6',
-    ...config.miniMaxConfig,
-  })
 
   const handleSave = () => {
-    onSave({ baseURL, apiKey, model, miniMaxConfig })
+    onSave({ baseURL, apiKey, model })
   }
 
   return (
@@ -95,78 +65,6 @@ export function MiniMaxPanel({ config, onSave, onClose }: MiniMaxPanelProps) {
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="pt-2 border-t border-[#3c3c3c] space-y-4">
-        <div className="text-[#858585] text-xs font-medium">多模态模型配置</div>
-
-        <div>
-          <label className="block text-[#858585] text-xs mb-2">图片生成模型</label>
-          <select
-            value={miniMaxConfig.image}
-            onChange={(e) =>
-              setMiniMaxConfig((prev) => ({ ...prev, image: e.target.value }))
-            }
-            className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
-          >
-            {imageModels.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-[#858585] text-xs mb-2">视频生成模型</label>
-          <select
-            value={miniMaxConfig.video}
-            onChange={(e) =>
-              setMiniMaxConfig((prev) => ({ ...prev, video: e.target.value }))
-            }
-            className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
-          >
-            {videoModels.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-[#858585] text-xs mb-2">语音合成模型</label>
-          <select
-            value={miniMaxConfig.speech}
-            onChange={(e) =>
-              setMiniMaxConfig((prev) => ({ ...prev, speech: e.target.value }))
-            }
-            className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
-          >
-            {speechModels.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-[#858585] text-xs mb-2">音乐生成模型</label>
-          <select
-            value={miniMaxConfig.music}
-            onChange={(e) =>
-              setMiniMaxConfig((prev) => ({ ...prev, music: e.target.value }))
-            }
-            className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
-          >
-            {musicModels.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
       </div>
 
       <div className="flex justify-end gap-2 pt-2 border-t border-[#3c3c3c]">

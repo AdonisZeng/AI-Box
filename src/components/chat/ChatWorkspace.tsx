@@ -73,8 +73,11 @@ function useRefreshSettings() {
             updateProvider(id as ProviderType, updates)
           })
         }
-        if (parsed.state?.activeProvider) {
-          setActiveProvider(parsed.state.activeProvider as ProviderType)
+        if (parsed.state?.activeProviders?.text) {
+          setActiveProvider('text', parsed.state.activeProviders.text as ProviderType)
+        } else if (parsed.state?.activeProvider) {
+          // fallback for old format
+          setActiveProvider('text', parsed.state.activeProvider as ProviderType)
         }
       }
     } catch (error) {
@@ -112,7 +115,7 @@ export function ChatWorkspace() {
     setGenerating,
   } = useChatStore()
 
-  const { activeProvider, providers, getProviderConfig } = useSettingsStore()
+  const { activeProviders, providers, getProviderConfig } = useSettingsStore()
 
   const [input, setInput] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
@@ -125,7 +128,7 @@ export function ChatWorkspace() {
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
   )
-  const chatProviderId = resolveChatProviderId(activeProvider)
+  const chatProviderId = resolveChatProviderId(activeProviders.text)
   const providerConfig = useMemo(
     () => providers.find((p) => p.id === chatProviderId),
     [providers, chatProviderId]
@@ -169,7 +172,7 @@ export function ChatWorkspace() {
     if (!input.trim() || isGenerating || !activeSession) return
 
     const latestProvider = resolveLatestChatProvider({
-      activeProvider,
+      activeProvider: activeProviders.text,
       providers,
       persistedSettings: window.localStorage.getItem('ai-box-settings'),
     })

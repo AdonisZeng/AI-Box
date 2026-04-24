@@ -13,11 +13,11 @@ export const minimaxDefinition = {
       model: 'MiniMax-M2.7',
       apiType: 'anthropic',
       enabled: false,
-      miniMaxConfig: {
+      categoryModels: {
         text: 'MiniMax-M2.7',
         image: 'image-01',
         video: 'MiniMax-Hailuo-2.3',
-        speech: 'speech-2.8-hd',
+        voice: 'speech-2.8-hd',
         music: 'music-2.6',
       },
     }

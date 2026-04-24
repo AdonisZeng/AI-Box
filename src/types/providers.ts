@@ -4,7 +4,8 @@
 export type {
   ProviderType,
   ProviderConfig,
-  MiniMaxSubModelConfig,
+  CategoryModelConfig,
+  ProviderCategory,
   APICompatibility,
   LLMProvider,
   Message,

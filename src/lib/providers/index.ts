@@ -1,6 +1,7 @@
 export type {
   ProviderConfig,
-  MiniMaxSubModelConfig,
+  CategoryModelConfig,
+  ProviderCategory,
   APICompatibility,
   Message,
   StreamChunk,
@@ -18,6 +19,9 @@ export {
   createProvider,
   isValidProviderType,
   getProviderTypeList,
+  CATEGORY_PROVIDER_MAP,
+  CATEGORY_LABELS,
+  getProvidersForCategory,
 } from './registry'
 
 export { OpenAIProvider } from './openai'
