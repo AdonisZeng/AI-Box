@@ -184,7 +184,7 @@ export class MiniMaxAudioProvider implements AudioProvider {
     return { fileId: String(fileId) }
   }
 
-  async cloneVoice(params: VoiceCloneParams): Promise<{ voiceId: string; demoAudio?: string }> {
+  async cloneVoice(params: VoiceCloneParams): Promise<{ voiceId: string; demoAudioUrl?: string }> {
     const body: Record<string, unknown> = {
       file_id: Number(params.fileId),
       voice_id: params.voiceId,
@@ -212,7 +212,7 @@ export class MiniMaxAudioProvider implements AudioProvider {
       base_resp?: { status_msg: string }
     }>('POST', '/v1/voice_clone', body)
 
-    return { voiceId: params.voiceId, demoAudio: data.demo_audio || undefined }
+    return { voiceId: params.voiceId, demoAudioUrl: data.demo_audio || undefined }
   }
 
   async designVoice(params: VoiceDesignParams): Promise<{ voiceId: string; trialAudio?: string }> {

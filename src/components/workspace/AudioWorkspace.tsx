@@ -214,16 +214,20 @@ function TaskCard({ task, onRefresh }: { task: AudioTask; onRefresh: (taskId: st
   const removeTask = useAudioStore((s) => s.removeTask)
 
   const audioSrc = useMemo(() => {
+    if (task.audioUrl) return task.audioUrl
     if (!task.audioBase64) return null
     return `data:${getMimeType(task.audioFormat || 'mp3')};base64,${task.audioBase64}`
-  }, [task.audioBase64, task.audioFormat])
+  }, [task.audioBase64, task.audioUrl, task.audioFormat])
 
   const handleDownload = () => {
     if (!audioSrc) return
     const ext = task.audioFormat || 'mp3'
     const link = document.createElement('a')
     link.href = audioSrc
-    link.download = `${task.type}-${task.taskId.slice(0, 8)}.${ext}`
+    // For cross-origin URLs, download attribute may not work; let browser handle it
+    if (!task.audioUrl) {
+      link.download = `${task.type}-${task.taskId.slice(0, 8)}.${ext}`
+    }
     link.click()
   }
 
@@ -295,7 +299,7 @@ function TaskCard({ task, onRefresh }: { task: AudioTask; onRefresh: (taskId: st
         </div>
       )}
 
-      {task.status === 'Success' && !task.audioBase64 && task.type === 'tts' && (
+      {task.status === 'Success' && !task.audioBase64 && !task.audioUrl && task.type === 'tts' && (
         <div className="text-xs text-[#666] bg-[#252526] rounded px-3 py-2">
           异步任务已完成，音频文件待下载（file_id: {task.fileId})
         </div>
@@ -413,7 +417,7 @@ function TTSPanel({
           text: text.trim(),
           model,
           voiceId: generatedVoiceId,
-          audioBase64: result.demoAudio,
+          audioUrl: result.demoAudioUrl,
           audioFormat: 'mp3',
           fileId: uploadResult.fileId,
         })
@@ -458,7 +462,11 @@ function TTSPanel({
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '合成失败')
+      const raw = e instanceof Error ? e.message : '合成失败'
+      const friendly = raw.toLowerCase().includes('insufficient balance')
+        ? `${raw} — 请检查 MiniMax 后台额度（声音复刻可能与通用额度分开计费）`
+        : raw
+      setError(friendly)
     } finally {
       setIsGenerating(false)
     }
@@ -567,8 +575,8 @@ function TTSPanel({
           </div>
         </div>
 
-        {/* Voice Selection */}
-        <div>
+        {/* Voice Selection — hidden when using reference audio */}
+        {!useRefAudio && <div>
           <label className="block text-[#858585] text-xs mb-1.5">音色</label>
           {isCustomVoice ? (
             <input
@@ -611,7 +619,19 @@ function TTSPanel({
             />
             <span className="text-[10px] text-[#666]">使用自定义音色 ID</span>
           </label>
-        </div>
+        </div>}
+
+        {/* Reference Audio mode info */}
+        {useRefAudio && (
+          <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg p-3 space-y-1">
+            <p className="text-xs text-[#999]">
+              参考音频模式：将自动提取上传音频的音色特征，忽略下方的音色、语速、音量、音调、情绪等设置。
+            </p>
+            <p className="text-[10px] text-[#666]">
+              生成的音色 ID 为临时 ID，可在左侧任务列表中查看。
+            </p>
+          </div>
+        )}
 
         {/* Reference Audio for TTS */}
         <div>
@@ -684,153 +704,153 @@ function TTSPanel({
           )}
         </div>
 
-        {/* Speed Slider */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[#858585] text-xs flex items-center gap-1">
-              <Gauge size={12} />
-              语速
-            </label>
-            <span className="text-[#ccc] text-xs">{speed.toFixed(1)}</span>
-          </div>
-          <input
-            type="range"
-            min={0.5}
-            max={2}
-            step={0.1}
-            value={speed}
-            onChange={(e) => setSpeed(Number(e.target.value))}
-            className="w-full accent-[#4a9eff]"
-          />
-          <div className="flex justify-between text-[10px] text-[#555]">
-            <span>慢</span>
-            <span>快</span>
-          </div>
-        </div>
-
-        {/* Volume Slider */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[#858585] text-xs flex items-center gap-1">
-              <Volume2 size={12} />
-              音量
-            </label>
-            <span className="text-[#ccc] text-xs">{vol.toFixed(1)}</span>
-          </div>
-          <input
-            type="range"
-            min={0.1}
-            max={10}
-            step={0.1}
-            value={vol}
-            onChange={(e) => setVol(Number(e.target.value))}
-            className="w-full accent-[#4a9eff]"
-          />
-        </div>
-
-        {/* Pitch Slider */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[#858585] text-xs">音调</label>
-            <span className="text-[#ccc] text-xs">{pitch}</span>
-          </div>
-          <input
-            type="range"
-            min={-12}
-            max={12}
-            step={1}
-            value={pitch}
-            onChange={(e) => setPitch(Number(e.target.value))}
-            className="w-full accent-[#4a9eff]"
-          />
-          <div className="flex justify-between text-[10px] text-[#555]">
-            <span>低沉</span>
-            <span>明亮</span>
-          </div>
-        </div>
-
-        {/* Emotion */}
-        <div>
-          <label className="block text-[#858585] text-xs mb-1.5">情绪</label>
-          <select
-            value={emotion}
-            onChange={(e) => setEmotion(e.target.value)}
-            className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
-          >
-            {emotionOptions.map((e) => (
-              <option key={e.value} value={e.value}>
-                {e.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Audio Format Settings */}
-        <div className="border border-[#3c3c3c] rounded-lg p-3 space-y-3">
-          <div className="flex items-center gap-1.5 text-[#858585] text-xs">
-            <SlidersHorizontal size={12} />
-            <span>音频格式</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+        {/* Speed / Vol / Pitch / Emotion / Format — hidden when using reference audio */}
+        {!useRefAudio && (
+          <>
             <div>
-              <label className="block text-[#666] text-[10px] mb-1">格式</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[#858585] text-xs flex items-center gap-1">
+                  <Gauge size={12} />
+                  语速
+                </label>
+                <span className="text-[#ccc] text-xs">{speed.toFixed(1)}</span>
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={2}
+                step={0.1}
+                value={speed}
+                onChange={(e) => setSpeed(Number(e.target.value))}
+                className="w-full accent-[#4a9eff]"
+              />
+              <div className="flex justify-between text-[10px] text-[#555]">
+                <span>慢</span>
+                <span>快</span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[#858585] text-xs flex items-center gap-1">
+                  <Volume2 size={12} />
+                  音量
+                </label>
+                <span className="text-[#ccc] text-xs">{vol.toFixed(1)}</span>
+              </div>
+              <input
+                type="range"
+                min={0.1}
+                max={10}
+                step={0.1}
+                value={vol}
+                onChange={(e) => setVol(Number(e.target.value))}
+                className="w-full accent-[#4a9eff]"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[#858585] text-xs">音调</label>
+                <span className="text-[#ccc] text-xs">{pitch}</span>
+              </div>
+              <input
+                type="range"
+                min={-12}
+                max={12}
+                step={1}
+                value={pitch}
+                onChange={(e) => setPitch(Number(e.target.value))}
+                className="w-full accent-[#4a9eff]"
+              />
+              <div className="flex justify-between text-[10px] text-[#555]">
+                <span>低沉</span>
+                <span>明亮</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[#858585] text-xs mb-1.5">情绪</label>
               <select
-                value={format}
-                onChange={(e) => setFormat(e.target.value as Format)}
-                className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+                value={emotion}
+                onChange={(e) => setEmotion(e.target.value)}
+                className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
               >
-                {formatOptions.map((f) => (
-                  <option key={f} value={f}>
-                    {f.toUpperCase()}
+                {emotionOptions.map((e) => (
+                  <option key={e.value} value={e.value}>
+                    {e.label}
                   </option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-[#666] text-[10px] mb-1">声道</label>
-              <select
-                value={channel}
-                onChange={(e) => setChannel(Number(e.target.value))}
-                className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
-              >
-                <option value={1}>单声道</option>
-                <option value={2}>双声道</option>
-              </select>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[#666] text-[10px] mb-1">采样率</label>
-              <select
-                value={sampleRate}
-                onChange={(e) => setSampleRate(Number(e.target.value))}
-                className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
-              >
-                {sampleRateOptions.map((r) => (
-                  <option key={r} value={r}>
-                    {r}Hz
-                  </option>
-                ))}
-              </select>
+            <div className="border border-[#3c3c3c] rounded-lg p-3 space-y-3">
+              <div className="flex items-center gap-1.5 text-[#858585] text-xs">
+                <SlidersHorizontal size={12} />
+                <span>音频格式</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#666] text-[10px] mb-1">格式</label>
+                  <select
+                    value={format}
+                    onChange={(e) => setFormat(e.target.value as Format)}
+                    className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+                  >
+                    {formatOptions.map((f) => (
+                      <option key={f} value={f}>
+                        {f.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[#666] text-[10px] mb-1">声道</label>
+                  <select
+                    value={channel}
+                    onChange={(e) => setChannel(Number(e.target.value))}
+                    className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+                  >
+                    <option value={1}>单声道</option>
+                    <option value={2}>双声道</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#666] text-[10px] mb-1">采样率</label>
+                  <select
+                    value={sampleRate}
+                    onChange={(e) => setSampleRate(Number(e.target.value))}
+                    className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+                  >
+                    {sampleRateOptions.map((r) => (
+                      <option key={r} value={r}>
+                        {r}Hz
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[#666] text-[10px] mb-1">比特率</label>
+                  <select
+                    value={bitrate}
+                    onChange={(e) => setBitrate(Number(e.target.value))}
+                    className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+                  >
+                    {bitrateOptions.map((b) => (
+                      <option key={b} value={b}>
+                        {b / 1000}kbps
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="block text-[#666] text-[10px] mb-1">比特率</label>
-              <select
-                value={bitrate}
-                onChange={(e) => setBitrate(Number(e.target.value))}
-                className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
-              >
-                {bitrateOptions.map((b) => (
-                  <option key={b} value={b}>
-                    {b / 1000}kbps
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
+          </>
+        )}
 
         {error && <ErrorBar message={error} />}
       </div>
@@ -973,7 +993,7 @@ function VoiceClonePanel({
         text: previewText.trim() || file.name,
         model: previewText.trim() ? previewModel : undefined,
         voiceId: result.voiceId,
-        audioBase64: result.demoAudio,
+        audioUrl: result.demoAudioUrl,
         audioFormat: 'mp3',
         fileId: uploadResult.fileId,
       })
@@ -983,7 +1003,11 @@ function VoiceClonePanel({
       setPreviewText('')
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (e) {
-      setError(e instanceof Error ? e.message : '复刻失败')
+      const raw = e instanceof Error ? e.message : '复刻失败'
+      const friendly = raw.toLowerCase().includes('insufficient balance')
+        ? `${raw} — 请检查 MiniMax 后台额度（声音复刻可能与通用额度分开计费）`
+        : raw
+      setError(friendly)
     } finally {
       setIsCloning(false)
     }
@@ -1236,7 +1260,11 @@ function VoiceDesignPanel({
       setPreviewText('')
       setVoiceId('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '设计失败')
+      const raw = e instanceof Error ? e.message : '设计失败'
+      const friendly = raw.toLowerCase().includes('insufficient balance')
+        ? `${raw} — 请检查 MiniMax 后台额度（声音复刻可能与通用额度分开计费）`
+        : raw
+      setError(friendly)
     } finally {
       setIsDesigning(false)
     }
@@ -1416,7 +1444,11 @@ function MusicGenerationPanel({
       const result = await provider.preprocessCoverAudio(base64)
       setCoverFeatureId(result.coverFeatureId)
     } catch (e) {
-      setError(e instanceof Error ? e.message : '预处理失败')
+      const raw = e instanceof Error ? e.message : '预处理失败'
+      const friendly = raw.toLowerCase().includes('insufficient balance')
+        ? `${raw} — 请检查 MiniMax 后台额度（声音复刻可能与通用额度分开计费）`
+        : raw
+      setError(friendly)
     } finally {
       setIsPreprocessing(false)
     }
@@ -1479,7 +1511,11 @@ function MusicGenerationPanel({
       setPrompt('')
       setLyrics('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '生成失败')
+      const raw = e instanceof Error ? e.message : '生成失败'
+      const friendly = raw.toLowerCase().includes('insufficient balance')
+        ? `${raw} — 请检查 MiniMax 后台额度（声音复刻可能与通用额度分开计费）`
+        : raw
+      setError(friendly)
     } finally {
       setIsGenerating(false)
     }
@@ -1879,7 +1915,7 @@ export function AudioWorkspace() {
     async (taskId: string) => {
       if (!provider) return
       const task = tasks.find((t) => t.taskId === taskId)
-      if (!task || task.audioBase64) return
+      if (!task || task.audioBase64 || task.audioUrl) return
       try {
         const result = await provider.queryAudioTask(taskId)
         if (

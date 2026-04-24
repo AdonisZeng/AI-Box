@@ -13,6 +13,7 @@ export interface AudioTask {
   voiceId: string
   audioFormat?: string
   audioBase64?: string
+  audioUrl?: string
   fileId?: string
   error?: string
   createdAt: number
@@ -94,7 +95,7 @@ export interface AudioProvider {
 
   uploadFile?(file: File, purpose: string): Promise<{ fileId: string }>
 
-  cloneVoice?(params: VoiceCloneParams): Promise<{ voiceId: string; demoAudio?: string }>
+  cloneVoice?(params: VoiceCloneParams): Promise<{ voiceId: string; demoAudioUrl?: string }>
 
   designVoice?(params: VoiceDesignParams): Promise<{ voiceId: string; trialAudio?: string }>
 
