@@ -107,7 +107,6 @@ function TaskCard({ task }: { task: ImageTask }) {
                 alt={`生成结果 ${idx + 1}`}
                 className="w-full rounded border border-[#3c3c3c] object-cover"
                 style={{ aspectRatio: '1' }}
-                onClick={() => window.open(url, '_blank')}
               />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded">
                 <a
@@ -148,7 +147,7 @@ export function ImageWorkspace() {
   const [model, setModel] = useState('image-01')
   const [aspectRatio, setAspectRatio] = useState('1:1')
   const [n, setN] = useState(1)
-  const [seed, setSeed] = useState('')
+  const [seed, setSeed] = useState<number | undefined>(undefined)
   const [promptOptimizer, setPromptOptimizer] = useState(false)
   const [aigcWatermark, setAigcWatermark] = useState(false)
   const [styleType, setStyleType] = useState('')
@@ -212,7 +211,7 @@ export function ImageWorkspace() {
         model,
         aspectRatio,
         n,
-        seed: seed ? Number(seed) : undefined,
+        seed,
         promptOptimizer,
         aigcWatermark,
         style:
@@ -247,8 +246,12 @@ export function ImageWorkspace() {
         error: success ? undefined : '未返回图片数据',
       })
 
-      if (success && activeTab === 't2i') {
-        setPrompt('')
+      if (success) {
+        if (activeTab === 't2i') {
+          setPrompt('')
+        } else {
+          setSourceImage('')
+        }
       }
     } catch (e) {
       const raw = e instanceof Error ? e.message : '生成失败'
@@ -353,7 +356,11 @@ export function ImageWorkspace() {
                       e.preventDefault()
                       setDragOver(true)
                     }}
-                    onDragLeave={() => setDragOver(false)}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        setDragOver(false)
+                      }
+                    }}
                     onDrop={(e) => {
                       e.preventDefault()
                       setDragOver(false)
@@ -378,7 +385,10 @@ export function ImageWorkspace() {
                   accept="image/jpeg,image/png"
                   onChange={(e) => {
                     const f = e.target.files?.[0]
-                    if (f) void handleImageUpload(f)
+                    if (f) {
+                      void handleImageUpload(f)
+                      e.target.value = ''
+                    }
                   }}
                   className="hidden"
                 />
@@ -463,8 +473,11 @@ export function ImageWorkspace() {
                 <label className="block text-[#858585] text-xs mb-1.5">随机种子</label>
                 <input
                   type="number"
-                  value={seed}
-                  onChange={(e) => setSeed(e.target.value)}
+                  value={seed ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setSeed(v === '' ? undefined : Number(v))
+                  }}
                   placeholder="留空则随机"
                   className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] placeholder-[#666] focus:outline-none focus:border-[#4a9eff]"
                 />

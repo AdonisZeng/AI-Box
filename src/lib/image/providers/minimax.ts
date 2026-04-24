@@ -41,9 +41,7 @@ export class MiniMaxImageProvider implements ImageProvider {
     return data as T
   }
 
-  async textToImage(
-    params: TextToImageParams
-  ): Promise<{ taskId: string; imageUrls?: string[]; imageBase64List?: string[] }> {
+  private buildBody(params: TextToImageParams): Record<string, unknown> {
     const body: Record<string, unknown> = {
       model: params.model,
       prompt: params.prompt,
@@ -64,6 +62,12 @@ export class MiniMaxImageProvider implements ImageProvider {
       }
     }
 
+    return body
+  }
+
+  private async generate(
+    body: Record<string, unknown>
+  ): Promise<{ taskId: string; imageUrls?: string[]; imageBase64List?: string[] }> {
     const data = await this.request<{
       id: string
       data?: { image_urls?: string[]; image_base64?: string[] }
@@ -78,41 +82,17 @@ export class MiniMaxImageProvider implements ImageProvider {
     }
   }
 
+  async textToImage(
+    params: TextToImageParams
+  ): Promise<{ taskId: string; imageUrls?: string[]; imageBase64List?: string[] }> {
+    return this.generate(this.buildBody(params))
+  }
+
   async imageToImage(
     params: ImageToImageParams
   ): Promise<{ taskId: string; imageUrls?: string[]; imageBase64List?: string[] }> {
-    const body: Record<string, unknown> = {
-      model: params.model,
-      prompt: params.prompt,
-      subject_reference: params.subjectReference,
-    }
-
-    if (params.aspectRatio) body.aspect_ratio = params.aspectRatio
-    if (params.width !== undefined) body.width = params.width
-    if (params.height !== undefined) body.height = params.height
-    if (params.responseFormat) body.response_format = params.responseFormat
-    if (params.n !== undefined) body.n = params.n
-    if (params.seed !== undefined) body.seed = params.seed
-    if (params.promptOptimizer !== undefined) body.prompt_optimizer = params.promptOptimizer
-    if (params.aigcWatermark !== undefined) body.aigc_watermark = params.aigcWatermark
-    if (params.style) {
-      body.style = {
-        style_type: params.style.styleType,
-        style_weight: params.style.styleWeight ?? 0.8,
-      }
-    }
-
-    const data = await this.request<{
-      id: string
-      data?: { image_urls?: string[]; image_base64?: string[] }
-      metadata?: { success_count?: number; failed_count?: number }
-      base_resp?: { status_msg: string }
-    }>('POST', '/v1/image_generation', body)
-
-    return {
-      taskId: data.id,
-      imageUrls: data.data?.image_urls,
-      imageBase64List: data.data?.image_base64,
-    }
+    const body = this.buildBody(params)
+    body.subject_reference = params.subjectReference
+    return this.generate(body)
   }
 }

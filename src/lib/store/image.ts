@@ -44,6 +44,8 @@ export const useImageStore = create<ImageState>()(
               updated.status !== t.status ||
               updated.imageUrls !== t.imageUrls ||
               updated.imageBase64List !== t.imageBase64List ||
+              updated.sourceImageUrl !== t.sourceImageUrl ||
+              updated.model !== t.model ||
               updated.error !== t.error
             ) {
               changed = true
@@ -70,6 +72,12 @@ export const useImageStore = create<ImageState>()(
     }),
     {
       name: 'ai-box-image-tasks',
+      partialize: (state) => ({
+        tasks: state.tasks.map((t) => ({
+          ...t,
+          imageBase64List: undefined,
+        })),
+      }),
     }
   )
 )
