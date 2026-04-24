@@ -2,22 +2,21 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { VideoTask } from '@/lib/video/types'
 
+const MAX_TASKS = 50
+
 interface VideoState {
   tasks: VideoTask[]
-  isGenerating: boolean
 
   addTask: (task: Omit<VideoTask, 'id' | 'createdAt' | 'updatedAt'>) => string
   updateTask: (taskId: string, updates: Partial<VideoTask>) => void
   removeTask: (taskId: string) => void
   clearCompleted: () => void
-  setGenerating: (generating: boolean) => void
 }
 
 export const useVideoStore = create<VideoState>()(
   persist(
     (set, get) => ({
       tasks: [],
-      isGenerating: false,
 
       addTask: (task) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -27,18 +26,31 @@ export const useVideoStore = create<VideoState>()(
           createdAt: Date.now(),
           updatedAt: Date.now(),
         }
-        set({ tasks: [newTask, ...get().tasks] })
+        const next = [newTask, ...get().tasks]
+        if (next.length > MAX_TASKS) {
+          next.pop()
+        }
+        set({ tasks: next })
         return id
       },
 
       updateTask: (taskId, updates) => {
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.taskId === taskId
-              ? { ...t, ...updates, updatedAt: Date.now() }
-              : t
-          ),
-        }))
+        set((state) => {
+          let changed = false
+          const next = state.tasks.map((t) => {
+            if (t.taskId !== taskId) return t
+            const updated = { ...t, ...updates, updatedAt: Date.now() }
+            if (
+              updated.status !== t.status ||
+              updated.videoUrl !== t.videoUrl ||
+              updated.error !== t.error
+            ) {
+              changed = true
+            }
+            return updated
+          })
+          return changed ? { tasks: next } : state
+        })
       },
 
       removeTask: (taskId) => {
@@ -53,10 +65,6 @@ export const useVideoStore = create<VideoState>()(
             (t) => t.status !== 'Success' && t.status !== 'Fail'
           ),
         }))
-      },
-
-      setGenerating: (generating) => {
-        set({ isGenerating: generating })
       },
     }),
     {

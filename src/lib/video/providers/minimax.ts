@@ -9,19 +9,45 @@ import type {
 export class MiniMaxVideoProvider implements VideoProvider {
   name = 'MiniMax'
   providerId = 'minimax'
+  private videoBaseURL: string
+  private headers: Record<string, string>
 
-  constructor(private apiKey: string, private baseURL: string) {}
-
-  private getVideoBaseURL(): string {
-    // Text API uses /anthropic suffix; video API uses the root domain
-    return this.baseURL.replace(/\/anthropic\/?$/, '') || 'https://api.minimaxi.com'
+  constructor(apiKey: string, baseURL: string) {
+    this.videoBaseURL = baseURL.replace(/\/anthropic\/?$/, '') || 'https://api.minimaxi.com'
+    this.headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    }
   }
 
-  private getHeaders(): Record<string, string> {
-    return {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.apiKey}`,
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: Record<string, unknown>,
+    query?: Record<string, string>
+  ): Promise<T> {
+    let url = `${this.videoBaseURL}${path}`
+    if (query) {
+      const params = new URLSearchParams(query)
+      url += `?${params.toString()}`
     }
+
+    const res = await fetch(url, {
+      method,
+      headers: this.headers,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+
+    if (!res.ok) {
+      throw new Error(`MiniMax API 错误 (${path}): ${res.status}`)
+    }
+
+    const data = (await res.json()) as { base_resp?: { status_code: number; status_msg: string } }
+    if (data.base_resp?.status_code !== 0) {
+      throw new Error(data.base_resp?.status_msg || '未知错误')
+    }
+
+    return data as T
   }
 
   async textToVideo(params: TextToVideoParams): Promise<{ taskId: string }> {
@@ -33,20 +59,7 @@ export class MiniMaxVideoProvider implements VideoProvider {
     if (params.resolution) body.resolution = params.resolution
     if (params.promptOptimizer !== undefined) body.prompt_optimizer = params.promptOptimizer
 
-    const res = await fetch(`${this.getVideoBaseURL()}/v1/video_generation`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      throw new Error(`MiniMax T2V 请求失败: ${res.status}`)
-    }
-
-    const data = await res.json()
-    if (data.base_resp?.status_code !== 0) {
-      throw new Error(data.base_resp?.status_msg || '未知错误')
-    }
+    const data = await this.request<{ task_id: string }>('POST', '/v1/video_generation', body)
     return { taskId: data.task_id }
   }
 
@@ -60,20 +73,7 @@ export class MiniMaxVideoProvider implements VideoProvider {
     if (params.resolution) body.resolution = params.resolution
     if (params.promptOptimizer !== undefined) body.prompt_optimizer = params.promptOptimizer
 
-    const res = await fetch(`${this.getVideoBaseURL()}/v1/video_generation`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      throw new Error(`MiniMax I2V 请求失败: ${res.status}`)
-    }
-
-    const data = await res.json()
-    if (data.base_resp?.status_code !== 0) {
-      throw new Error(data.base_resp?.status_msg || '未知错误')
-    }
+    const data = await this.request<{ task_id: string }>('POST', '/v1/video_generation', body)
     return { taskId: data.task_id }
   }
 
@@ -88,69 +88,36 @@ export class MiniMaxVideoProvider implements VideoProvider {
       body.media_inputs = params.mediaInputs.map((v) => ({ value: v }))
     }
 
-    const res = await fetch(`${this.getVideoBaseURL()}/v1/video_template_generation`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      throw new Error(`MiniMax 视频Agent 请求失败: ${res.status}`)
-    }
-
-    const data = await res.json()
-    if (data.base_resp?.status_code !== 0) {
-      throw new Error(data.base_resp?.status_msg || '未知错误')
-    }
+    const data = await this.request<{ task_id: string }>('POST', '/v1/video_template_generation', body)
     return { taskId: data.task_id }
   }
 
   async queryVideoTask(
     taskId: string
   ): Promise<Pick<VideoTask, 'status' | 'videoUrl' | 'error'>> {
-    const res = await fetch(
-      `${this.getVideoBaseURL()}/v1/query/video_generation?task_id=${encodeURIComponent(taskId)}`,
-      {
-        method: 'GET',
-        headers: this.getHeaders(),
-      }
-    )
-
-    if (!res.ok) {
-      throw new Error(`MiniMax 视频查询失败: ${res.status}`)
-    }
-
-    const data = await res.json()
-    if (data.base_resp?.status_code !== 0) {
-      throw new Error(data.base_resp?.status_msg || '未知错误')
-    }
+    const data = await this.request<{
+      status: string
+      video_url?: string
+      base_resp?: { status_msg: string }
+    }>('GET', '/v1/query/video_generation', undefined, { task_id: taskId })
 
     return {
       status: this.normalizeStatus(data.status),
       videoUrl: data.video_url,
-      error: data.status === 'Fail' || data.status === 'failed' ? data.base_resp?.status_msg : undefined,
+      error: data.status === 'Fail' || data.status === 'failed'
+        ? data.base_resp?.status_msg
+        : undefined,
     }
   }
 
   async queryAgentTask(
     taskId: string
   ): Promise<Pick<VideoTask, 'status' | 'videoUrl' | 'error'>> {
-    const res = await fetch(
-      `${this.getVideoBaseURL()}/v1/query/video_template_generation?task_id=${encodeURIComponent(taskId)}`,
-      {
-        method: 'GET',
-        headers: this.getHeaders(),
-      }
-    )
-
-    if (!res.ok) {
-      throw new Error(`MiniMax 视频Agent查询失败: ${res.status}`)
-    }
-
-    const data = await res.json()
-    if (data.base_resp?.status_code !== 0) {
-      throw new Error(data.base_resp?.status_msg || '未知错误')
-    }
+    const data = await this.request<{
+      status: string
+      video_url?: string
+      base_resp?: { status_msg: string }
+    }>('GET', '/v1/query/video_template_generation', undefined, { task_id: taskId })
 
     return {
       status: this.normalizeStatus(data.status),

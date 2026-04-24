@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Video, Image, Wand2, Loader2, Trash2, RefreshCw, Download, AlertCircle, Upload, X } from 'lucide-react'
 import { useSettingsStore } from '@/lib/store'
 import { useVideoStore } from '@/lib/store/video'
 import { getActiveVideoProvider, getVideoProviderConfig } from '@/lib/video/service'
-import type { VideoProvider, VideoTask } from '@/lib/video/types'
+import type { VideoTask } from '@/lib/video/types'
 
 type TabType = 't2v' | 'i2v' | 'agent'
 
@@ -26,13 +26,30 @@ const i2vModels = [
 const durationOptions = [6, 10]
 const resolutionOptions = ['720P', '768P', '1080P']
 
+const TAB_LABEL: Record<VideoTask['type'], string> = {
+  t2v: '文生视频',
+  i2v: '图生视频',
+  agent: '视频Agent',
+}
+
+const STATUS_LABEL: Record<VideoTask['status'], string> = {
+  Preparing: '准备中',
+  Processing: '生成中',
+  Success: '已完成',
+  Fail: '失败',
+}
+
+const STATUS_COLOR: Record<VideoTask['status'], string> = {
+  Preparing: 'text-yellow-400',
+  Processing: 'text-blue-400',
+  Success: 'text-green-400',
+  Fail: 'text-red-400',
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      resolve(result)
-    }
+    reader.onload = () => resolve(reader.result as string)
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
@@ -45,62 +62,16 @@ function useVideoProvider() {
   return { config, provider }
 }
 
-function TaskCard({ task, provider }: { task: VideoTask; provider: VideoProvider | null }) {
-  const { updateTask, removeTask } = useVideoStore()
-  const [isPolling, setIsPolling] = useState(false)
-
-  const handleQuery = useCallback(async () => {
-    if (!provider || task.status === 'Success' || task.status === 'Fail') return
-    setIsPolling(true)
-    try {
-      const result =
-        task.type === 'agent'
-          ? await provider.queryAgentTask(task.taskId)
-          : await provider.queryVideoTask(task.taskId)
-      updateTask(task.taskId, {
-        status: result.status,
-        videoUrl: result.videoUrl,
-        error: result.error,
-      })
-    } catch (e) {
-      console.error('Query failed:', e)
-    } finally {
-      setIsPolling(false)
-    }
-  }, [provider, task, updateTask])
-
-  // Auto-poll for unfinished tasks
-  useEffect(() => {
-    if (task.status === 'Success' || task.status === 'Fail') return
-    const interval = setInterval(() => {
-      handleQuery()
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [task.status, handleQuery])
-
-  const statusLabel: Record<VideoTask['status'], string> = {
-    Preparing: '准备中',
-    Processing: '生成中',
-    Success: '已完成',
-    Fail: '失败',
-  }
-
-  const statusColor: Record<VideoTask['status'], string> = {
-    Preparing: 'text-yellow-400',
-    Processing: 'text-blue-400',
-    Success: 'text-green-400',
-    Fail: 'text-red-400',
-  }
+function TaskCard({ task, onRefresh }: { task: VideoTask; onRefresh: (taskId: string) => void }) {
+  const removeTask = useVideoStore((s) => s.removeTask)
 
   return (
     <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg p-3 space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-[#666]">
-            {task.type === 't2v' ? '文生视频' : task.type === 'i2v' ? '图生视频' : '视频Agent'}
-          </span>
-          <span className={`text-xs font-medium ${statusColor[task.status]}`}>
-            {statusLabel[task.status]}
+          <span className="text-xs text-[#666]">{TAB_LABEL[task.type]}</span>
+          <span className={`text-xs font-medium ${STATUS_COLOR[task.status]}`}>
+            {STATUS_LABEL[task.status]}
           </span>
           {task.status !== 'Success' && task.status !== 'Fail' && (
             <Loader2 size={12} className="animate-spin text-[#4a9eff]" />
@@ -108,16 +79,16 @@ function TaskCard({ task, provider }: { task: VideoTask; provider: VideoProvider
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={handleQuery}
-            disabled={isPolling || task.status === 'Success' || task.status === 'Fail'}
-            className="p-1 rounded hover:bg-[#333] text-[#666] hover:text-[#aaa] disabled:opacity-30"
+            onClick={() => onRefresh(task.taskId)}
+            disabled={task.status === 'Success' || task.status === 'Fail'}
+            className="p-1 rounded hover:bg-[#333] text-[#666] hover:text-[#aaa] disabled:opacity-30 cursor-pointer"
             title="刷新状态"
           >
-            <RefreshCw size={12} className={isPolling ? 'animate-spin' : ''} />
+            <RefreshCw size={12} />
           </button>
           <button
             onClick={() => removeTask(task.taskId)}
-            className="p-1 rounded hover:bg-[#333] text-[#666] hover:text-red-400"
+            className="p-1 rounded hover:bg-[#333] text-[#666] hover:text-red-400 cursor-pointer"
             title="删除"
           >
             <Trash2 size={12} />
@@ -125,9 +96,7 @@ function TaskCard({ task, provider }: { task: VideoTask; provider: VideoProvider
         </div>
       </div>
 
-      {task.prompt && (
-        <p className="text-[#aaa] text-xs line-clamp-2">{task.prompt}</p>
-      )}
+      {task.prompt && <p className="text-[#aaa] text-xs line-clamp-2">{task.prompt}</p>}
 
       {task.error && (
         <div className="flex items-center gap-1 text-red-400 text-xs">
@@ -178,7 +147,10 @@ export function VideoWorkspace() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { config, provider } = useVideoProvider()
-  const { tasks, addTask, updateTask } = useVideoStore()
+  const tasks = useVideoStore((s) => s.tasks)
+  const addTask = useVideoStore((s) => s.addTask)
+  const updateTask = useVideoStore((s) => s.updateTask)
+  const clearCompleted = useVideoStore((s) => s.clearCompleted)
 
   // Sync model when config changes
   useEffect(() => {
@@ -194,6 +166,41 @@ export function VideoWorkspace() {
       setModel(available[0])
     }
   }, [activeTab, model])
+
+  // Global polling for unfinished tasks
+  useEffect(() => {
+    if (!provider) return
+
+    const poll = async () => {
+      const currentTasks = useVideoStore.getState().tasks
+      const unfinished = currentTasks.filter((t) => t.status !== 'Success' && t.status !== 'Fail')
+      if (unfinished.length === 0) return
+
+      for (const task of unfinished) {
+        try {
+          const result =
+            task.type === 'agent'
+              ? await provider.queryAgentTask(task.taskId)
+              : await provider.queryVideoTask(task.taskId)
+          updateTask(task.taskId, {
+            status: result.status,
+            videoUrl: result.videoUrl,
+            error: result.error,
+          })
+        } catch (e) {
+          console.error('Poll failed for', task.taskId, e)
+        }
+      }
+    }
+
+    const initialTimeout = setTimeout(poll, 2000)
+    const interval = setInterval(poll, 5000)
+
+    return () => {
+      clearTimeout(initialTimeout)
+      clearInterval(interval)
+    }
+  }, [provider, updateTask])
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -259,37 +266,38 @@ export function VideoWorkspace() {
         })
       }
 
-      const taskType = activeTab
       addTask({
         taskId: result.taskId,
         providerId: config.id,
-        type: taskType,
+        type: activeTab,
         status: 'Preparing',
         prompt: activeTab === 'agent' ? `模板: ${templateId}` : prompt.trim(),
         imageUrl: activeTab === 'i2v' ? imageUrl : undefined,
         model: activeTab === 'agent' ? undefined : model,
       })
-
-      // Immediately query status
-      setTimeout(async () => {
-        try {
-          const queryResult =
-            taskType === 'agent'
-              ? await provider.queryAgentTask(result.taskId)
-              : await provider.queryVideoTask(result.taskId)
-          updateTask(result.taskId, {
-            status: queryResult.status,
-            videoUrl: queryResult.videoUrl,
-            error: queryResult.error,
-          })
-        } catch {
-          // ignore initial query error
-        }
-      }, 2000)
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败')
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  const handleRefreshOne = async (taskId: string) => {
+    if (!provider) return
+    const task = tasks.find((t) => t.taskId === taskId)
+    if (!task) return
+    try {
+      const result =
+        task.type === 'agent'
+          ? await provider.queryAgentTask(taskId)
+          : await provider.queryVideoTask(taskId)
+      updateTask(taskId, {
+        status: result.status,
+        videoUrl: result.videoUrl,
+        error: result.error,
+      })
+    } catch (e) {
+      console.error('Query failed:', e)
     }
   }
 
@@ -377,7 +385,7 @@ export function VideoWorkspace() {
                     />
                     <button
                       onClick={() => setImageUrl('')}
-                      className="absolute top-1 right-1 p-1 bg-black/60 rounded text-white hover:bg-black/80"
+                      className="absolute top-1 right-1 p-1 bg-black/60 rounded text-white hover:bg-black/80 cursor-pointer"
                     >
                       <X size={14} />
                     </button>
@@ -523,7 +531,7 @@ export function VideoWorkspace() {
               <span className="text-[10px] text-[#666]">{tasks.length} 个任务</span>
               {tasks.some((t) => t.status === 'Success' || t.status === 'Fail') && (
                 <button
-                  onClick={() => useVideoStore.getState().clearCompleted()}
+                  onClick={clearCompleted}
                   className="text-[10px] text-[#666] hover:text-red-400 transition-colors cursor-pointer"
                 >
                   清除已完成
@@ -541,7 +549,7 @@ export function VideoWorkspace() {
             ) : (
               <div className="space-y-3">
                 {tasks.map((task) => (
-                  <TaskCard key={task.id} task={task} provider={provider} />
+                  <TaskCard key={task.id} task={task} onRefresh={handleRefreshOne} />
                 ))}
               </div>
             )}
