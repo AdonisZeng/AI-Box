@@ -1,5 +1,18 @@
-import type { ProviderType, ProviderConfig } from '@/lib/providers'
-import { isValidProviderType } from '@/lib/providers'
+import type { ProviderConfig } from '../providers/types.ts'
+
+type ProviderType = string
+
+const validProviderTypes = new Set([
+  'lmstudio',
+  'openai',
+  'anthropic',
+  'custom',
+  'minimax',
+])
+
+function isValidProviderType(value: unknown): value is ProviderType {
+  return typeof value === 'string' && validProviderTypes.has(value)
+}
 
 export function resolveChatProviderId(activeProvider: ProviderType): ProviderType {
   return activeProvider

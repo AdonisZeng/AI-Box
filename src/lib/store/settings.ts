@@ -10,7 +10,7 @@ interface SettingsState {
   theme: 'light' | 'dark'
   _decryptedKeys: Record<string, string>
 
-  updateProvider: (id: ProviderType, updates: Partial<ProviderConfig>) => void
+  updateProvider: (id: ProviderType, updates: Partial<ProviderConfig>) => Promise<void>
   setActiveProvider: (category: ProviderCategory, id: ProviderType) => void
   setTheme: (theme: 'light' | 'dark') => void
   getProviderConfig: (id: ProviderType) => ProviderConfig | undefined

@@ -24,4 +24,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('agent:task-event', wrapped)
     },
   },
+  chat: {
+    complete: (request: unknown) => ipcRenderer.invoke('chat:complete', request),
+    abort: (requestId: number) => ipcRenderer.invoke('chat:abort', requestId),
+    onChunk: (listener: (event: unknown) => void) => {
+      const wrapped = (_event: unknown, payload: unknown) => listener(payload)
+      ipcRenderer.on('chat:chunk', wrapped)
+      return () => ipcRenderer.removeListener('chat:chunk', wrapped)
+    },
+  },
 })

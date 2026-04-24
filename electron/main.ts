@@ -21,6 +21,7 @@ import { logger } from './logger'
 import { resolveAppIconPath } from './app-icon'
 import { createProvider } from '../src/lib/providers/index'
 import { migrateLegacyPaths } from './agent/migrate-legacy-paths'
+import { registerChatIpc } from './chat-ipc'
 
 let settingsWindow: BrowserWindow | null = null
 const runnerManager = new RunnerManager()
@@ -184,6 +185,7 @@ app.whenReady().then(() => {
   registerAgentIpc(ipcMain, agentRuntime, {
     sendEvent: sendAgentEvent,
   })
+  registerChatIpc(ipcMain, { createProvider })
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

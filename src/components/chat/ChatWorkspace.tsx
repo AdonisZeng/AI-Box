@@ -6,6 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn, parseThinking } from '@/lib/utils'
 import { resolveChatProviderId, resolveLatestChatProvider } from '@/lib/chat/provider-resolution'
+import { resolveImmediateChatConnectionStatus } from '@/lib/chat/provider-status'
 import {
   getThinkingBodyClass,
   getThinkingPanelClass,
@@ -33,7 +34,7 @@ import {
 } from './message-surface-styles'
 import { useChatStore } from '@/lib/store'
 import { useSettingsStore } from '@/lib/store'
-import { createProvider, getProviderValidationError, type Message, type ProviderType } from '@/lib/providers'
+import { getProviderValidationError, type Message, type ProviderType } from '@/lib/providers'
 
 function useLocalStorageSync(_storeKey: string) {
   const [storageVersion, setStorageVersion] = useState(0)
@@ -57,33 +58,46 @@ function useLocalStorageSync(_storeKey: string) {
 }
 
 function useRefreshSettings() {
-  const { updateProvider, setActiveProvider } = useSettingsStore()
+  const { updateProvider, setActiveProvider, decryptApiKeys } = useSettingsStore()
   const storageVersion = useLocalStorageSync('ai-box-settings')
 
   useEffect(() => {
     if (storageVersion === 0) return
 
-    try {
-      const stored = localStorage.getItem('ai-box-settings')
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed.state?.providers) {
-          parsed.state.providers.forEach((provider: { id: string; [key: string]: unknown }) => {
-            const { id, ...updates } = provider
-            updateProvider(id as ProviderType, updates)
-          })
+    let cancelled = false
+    const refreshSettings = async () => {
+      try {
+        const stored = localStorage.getItem('ai-box-settings')
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (parsed.state?.providers) {
+            await Promise.all(
+              parsed.state.providers.map((provider: { id: string; [key: string]: unknown }) => {
+                const { id, ...updates } = provider
+                return updateProvider(id as ProviderType, updates)
+              })
+            )
+          }
+          if (parsed.state?.activeProviders?.text) {
+            setActiveProvider('text', parsed.state.activeProviders.text as ProviderType)
+          } else if (parsed.state?.activeProvider) {
+            // fallback for old format
+            setActiveProvider('text', parsed.state.activeProvider as ProviderType)
+          }
+          if (!cancelled) {
+            await decryptApiKeys()
+          }
         }
-        if (parsed.state?.activeProviders?.text) {
-          setActiveProvider('text', parsed.state.activeProviders.text as ProviderType)
-        } else if (parsed.state?.activeProvider) {
-          // fallback for old format
-          setActiveProvider('text', parsed.state.activeProvider as ProviderType)
-        }
+      } catch (error) {
+        console.error('Failed to refresh settings:', error)
       }
-    } catch (error) {
-      console.error('Failed to refresh settings:', error)
     }
-  }, [storageVersion, updateProvider, setActiveProvider])
+
+    refreshSettings()
+    return () => {
+      cancelled = true
+    }
+  }, [storageVersion, updateProvider, setActiveProvider, decryptApiKeys])
 }
 
 const GREETING_MESSAGE = '你好！我是 AI Box 助手。有什么我可以帮助你的吗？'
@@ -115,7 +129,7 @@ export function ChatWorkspace() {
     setGenerating,
   } = useChatStore()
 
-  const { activeProviders, providers, getProviderConfig } = useSettingsStore()
+  const { activeProviders, providers, decryptApiKeys } = useSettingsStore()
 
   const [input, setInput] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
@@ -171,12 +185,14 @@ export function ChatWorkspace() {
   const handleSend = async () => {
     if (!input.trim() || isGenerating || !activeSession) return
 
+    await decryptApiKeys()
+    const latestSettings = useSettingsStore.getState()
     const latestProvider = resolveLatestChatProvider({
-      activeProvider: activeProviders.text,
-      providers,
+      activeProvider: latestSettings.activeProviders.text,
+      providers: latestSettings.providers,
       persistedSettings: window.localStorage.getItem('ai-box-settings'),
     })
-    const currentProviderConfig = latestProvider.providerConfig ?? getProviderConfig(chatProviderId)
+    const currentProviderConfig = latestProvider.providerConfig ?? latestSettings.getProviderConfig(latestProvider.providerId)
     if (!currentProviderConfig) {
       appendAssistantMessage(
         activeSession.id,
@@ -185,18 +201,17 @@ export function ChatWorkspace() {
       return
     }
 
-    const validationError = getProviderValidationError(currentProviderConfig)
-    if (validationError) {
-      appendAssistantMessage(activeSession.id, `错误: ${validationError}`)
-      return
+    const decryptedApiKey = latestSettings.getDecryptedApiKey(latestProvider.providerId)
+    const runnableProviderConfig = {
+      ...currentProviderConfig,
+      apiKey:
+        decryptedApiKey ||
+        (typeof currentProviderConfig.apiKey === 'string' ? currentProviderConfig.apiKey : ''),
     }
 
-    const provider = createProvider(currentProviderConfig)
-    if (!provider) {
-      appendAssistantMessage(
-        activeSession.id,
-        `错误: 无法创建 Provider "${currentProviderConfig.name}"，请检查配置。`
-      )
+    const validationError = getProviderValidationError(runnableProviderConfig)
+    if (validationError) {
+      appendAssistantMessage(activeSession.id, `错误: ${validationError}`)
       return
     }
 
@@ -239,42 +254,52 @@ export function ChatWorkspace() {
           return true
         })
 
-      await provider.chat(conversationMessages, {
-        signal: abortController.signal,
-        onChunk: (chunk) => {
-          if (abortController.signal.aborted || requestIdRef.current !== requestId) {
-            return
+      const unsubscribeChunks = window.electronAPI.chat.onChunk(({ requestId: chunkRequestId, chunk }) => {
+        if (
+          chunkRequestId !== requestId ||
+          abortController.signal.aborted ||
+          requestIdRef.current !== requestId ||
+          chunk.done
+        ) {
+          return
+        }
+
+        // Handle reasoning_content from LMStudio reasoning separation
+        if (chunk.reasoning_content) {
+          hasReasoningContent = true
+          hasThinking = true
+          fullThinking += chunk.reasoning_content
+          updateThinking(activeSession.id, assistantMessageId, fullThinking)
+          setThinkingExpanded(activeSession.id, assistantMessageId, true)
+        }
+
+        // Handle regular content
+        if (chunk.content) {
+          fullContent += chunk.content
+          updateMessage(activeSession.id, assistantMessageId, fullContent)
+        }
+
+        // Fallback: if no reasoning_content field, parse thinking tags from content
+        if (!hasReasoningContent && chunk.content) {
+          const { thinking, response } = parseThinking(fullContent)
+          if (thinking !== null) {
+            hasThinking = true
+            updateThinking(activeSession.id, assistantMessageId, thinking)
+            updateMessage(activeSession.id, assistantMessageId, response)
+            setThinkingExpanded(activeSession.id, assistantMessageId, true)
           }
-
-          if (!chunk.done) {
-            // Handle reasoning_content from LMStudio reasoning separation
-            if (chunk.reasoning_content) {
-              hasReasoningContent = true
-              hasThinking = true
-              fullThinking += chunk.reasoning_content
-              updateThinking(activeSession.id, assistantMessageId, fullThinking)
-              setThinkingExpanded(activeSession.id, assistantMessageId, true)
-            }
-
-            // Handle regular content
-            if (chunk.content) {
-              fullContent += chunk.content
-              updateMessage(activeSession.id, assistantMessageId, fullContent)
-            }
-
-            // Fallback: if no reasoning_content field, parse thinking tags from content
-            if (!hasReasoningContent && chunk.content) {
-              const { thinking, response } = parseThinking(fullContent)
-              if (thinking !== null) {
-                hasThinking = true
-                updateThinking(activeSession.id, assistantMessageId, thinking)
-                updateMessage(activeSession.id, assistantMessageId, response)
-                setThinkingExpanded(activeSession.id, assistantMessageId, true)
-              }
-            }
-          }
-        },
+        }
       })
+
+      try {
+        await window.electronAPI.chat.complete({
+          requestId,
+          providerConfig: runnableProviderConfig,
+          messages: conversationMessages,
+        })
+      } finally {
+        unsubscribeChunks()
+      }
 
       // Final update - ensure thinking is finalized for tag-based parsing
       if (!abortController.signal.aborted && requestIdRef.current === requestId && !hasReasoningContent) {
@@ -321,15 +346,43 @@ export function ChatWorkspace() {
   }
 
   const testConnection = useCallback(async () => {
-    if (!providerConfig || !providerConfig.baseURL) {
+    const latestSettings = useSettingsStore.getState()
+    const latestProviderId = resolveChatProviderId(latestSettings.activeProviders.text)
+    const latestProviderConfig = latestSettings.providers.find((p) => p.id === latestProviderId)
+
+    const immediateStatus = resolveImmediateChatConnectionStatus(latestProviderConfig)
+    if (immediateStatus) {
+      setConnectionStatus(immediateStatus)
+      return
+    }
+
+    if (!latestProviderConfig) {
       setConnectionStatus('unknown')
+      return
+    }
+
+    const decryptedApiKey = latestSettings.getDecryptedApiKey(latestProviderId)
+    const runnableProviderConfig = {
+      ...latestProviderConfig,
+      apiKey:
+        decryptedApiKey ||
+        (typeof latestProviderConfig.apiKey === 'string' ? latestProviderConfig.apiKey : ''),
+    }
+
+    if (getProviderValidationError(runnableProviderConfig)) {
+      setConnectionStatus('disconnected')
       return
     }
 
     setConnectionStatus('unknown')
     try {
-      const response = await fetch(`${providerConfig.baseURL}/models`, {
+      const headers: Record<string, string> = {}
+      if (runnableProviderConfig.apiKey) {
+        headers.Authorization = `Bearer ${runnableProviderConfig.apiKey}`
+      }
+      const response = await fetch(`${runnableProviderConfig.baseURL}/models`, {
         method: 'GET',
+        headers,
         signal: AbortSignal.timeout(3000),
       })
       setConnectionStatus(response.ok ? 'connected' : 'disconnected')
@@ -344,6 +397,7 @@ export function ChatWorkspace() {
 
   const stopGeneration = () => {
     abortControllerRef.current?.abort()
+    window.electronAPI.chat.abort(requestIdRef.current)
     abortControllerRef.current = null
     setGenerating(false)
   }
