@@ -1,6 +1,6 @@
 export type AudioTaskStatus = 'Preparing' | 'Processing' | 'Success' | 'Fail'
 
-export type AudioTaskType = 'tts' | 'voice_clone' | 'voice_design'
+export type AudioTaskType = 'tts' | 'voice_clone' | 'voice_design' | 'music'
 
 export interface AudioTask {
   id: string
@@ -66,6 +66,21 @@ export interface VoiceDesignParams {
   voiceId?: string
 }
 
+export interface MusicGenerationParams {
+  model: string
+  prompt?: string
+  lyrics?: string
+  audioSetting?: {
+    sample_rate?: number
+    bitrate?: number
+    format?: 'mp3' | 'wav' | 'pcm'
+  }
+  aigcWatermark?: boolean
+  lyricsOptimizer?: boolean
+  isInstrumental?: boolean
+  referenceAudioBase64?: string
+}
+
 export interface AudioProvider {
   readonly name: string
   readonly providerId: string
@@ -81,4 +96,8 @@ export interface AudioProvider {
   cloneVoice?(params: VoiceCloneParams): Promise<{ voiceId: string; demoAudio?: string }>
 
   designVoice?(params: VoiceDesignParams): Promise<{ voiceId: string; trialAudio?: string }>
+
+  generateMusic?(
+    params: MusicGenerationParams
+  ): Promise<{ taskId: string; audioBase64: string }>
 }

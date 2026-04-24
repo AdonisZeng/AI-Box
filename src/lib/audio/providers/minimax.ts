@@ -4,6 +4,7 @@ import type {
   TextToSpeechParams,
   VoiceCloneParams,
   VoiceDesignParams,
+  MusicGenerationParams,
 } from '../types'
 
 export function isAsyncText(text: string): boolean {
@@ -235,6 +236,61 @@ export class MiniMaxAudioProvider implements AudioProvider {
 
     const trialAudio = data.trial_audio ? this.hexToBase64(data.trial_audio) : undefined
     return { voiceId, trialAudio }
+  }
+
+  async generateMusic(
+    params: MusicGenerationParams
+  ): Promise<{ taskId: string; audioBase64: string }> {
+    const body: Record<string, unknown> = {
+      model: params.model,
+      stream: false,
+      output_format: 'hex',
+    }
+
+    if (params.prompt) body.prompt = params.prompt
+    if (params.lyrics) body.lyrics = params.lyrics
+
+    if (params.audioSetting) {
+      const audioSetting: Record<string, unknown> = {}
+      if (params.audioSetting.sample_rate !== undefined)
+        audioSetting.sample_rate = params.audioSetting.sample_rate
+      if (params.audioSetting.bitrate !== undefined)
+        audioSetting.bitrate = params.audioSetting.bitrate
+      if (params.audioSetting.format !== undefined)
+        audioSetting.format = params.audioSetting.format
+      if (Object.keys(audioSetting).length > 0) {
+        body.audio_setting = audioSetting
+      }
+    }
+
+    if (params.aigcWatermark !== undefined) body.aigc_watermark = params.aigcWatermark
+    if (params.lyricsOptimizer !== undefined) body.lyrics_optimizer = params.lyricsOptimizer
+    if (params.isInstrumental !== undefined) body.is_instrumental = params.isInstrumental
+
+    if (params.referenceAudioBase64) {
+      body.audio_base64 = params.referenceAudioBase64
+    }
+
+    const data = await this.request<{
+      trace_id: string
+      data?: { audio?: string; status?: number }
+      extra_info?: {
+        music_duration?: number
+        music_sample_rate?: number
+        music_channel?: number
+        bitrate?: number
+        music_size?: number
+      }
+      base_resp?: { status_msg: string }
+    }>('POST', '/v1/music_generation', body)
+
+    const hexAudio = data.data?.audio
+    if (!hexAudio) {
+      throw new Error('未返回音频数据')
+    }
+
+    const audioBase64 = this.hexToBase64(hexAudio)
+    return { taskId: data.trace_id, audioBase64 }
   }
 
   private hexToBase64(hex: string): string {

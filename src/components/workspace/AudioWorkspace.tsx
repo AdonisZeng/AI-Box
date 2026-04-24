@@ -15,6 +15,7 @@ import {
   Wand2,
   ChevronDown,
   ChevronRight,
+  Disc3,
 } from 'lucide-react'
 import { useSettingsStore } from '@/lib/store'
 import { useAudioStore } from '@/lib/store/audio'
@@ -63,6 +64,19 @@ type Format = (typeof formatOptions)[number]
 const sampleRateOptions = [8000, 16000, 22050, 24000, 32000, 44100]
 const bitrateOptions = [32000, 64000, 128000, 256000]
 
+const musicModelOptions = [
+  { value: 'music-2.6', label: 'music-2.6' },
+  { value: 'music-2.6-free', label: 'music-2.6-free' },
+  { value: 'music-cover', label: 'music-cover' },
+  { value: 'music-cover-free', label: 'music-cover-free' },
+]
+
+const musicFormatOptions = ['mp3', 'wav', 'pcm'] as const
+type MusicFormat = (typeof musicFormatOptions)[number]
+
+const musicSampleRateOptions = [16000, 24000, 32000, 44100]
+const musicBitrateOptions = [32000, 64000, 128000, 256000]
+
 const languageBoostOptions = [
   { value: '', label: '不增强' },
   { value: 'auto', label: '自动判断' },
@@ -90,6 +104,7 @@ const TYPE_LABEL: Record<AudioTaskType, string> = {
   tts: '语音合成',
   voice_clone: '音色复刻',
   voice_design: '音色设计',
+  music: '音乐生成',
 }
 
 function useAudioProvider() {
@@ -251,7 +266,9 @@ function TaskCard({ task, onRefresh }: { task: AudioTask; onRefresh: (taskId: st
 
       <p className="text-[#aaa] text-xs line-clamp-2">{task.text}</p>
 
-      <div className="text-[10px] text-[#555]">音色: {task.voiceId}</div>
+      {task.voiceId && (
+        <div className="text-[10px] text-[#555]">音色: {task.voiceId}</div>
+      )}
 
       {task.error && (
         <div className="flex items-center gap-1 text-red-400 text-xs">
@@ -293,6 +310,12 @@ function TaskCard({ task, onRefresh }: { task: AudioTask; onRefresh: (taskId: st
       {task.status === 'Success' && task.type === 'voice_design' && (
         <div className="text-xs text-[#666] bg-[#252526] rounded px-3 py-2">
           设计成功，voice_id: <span className="text-[#4a9eff] font-mono">{task.voiceId}</span>
+        </div>
+      )}
+
+      {task.status === 'Success' && task.type === 'music' && (
+        <div className="text-xs text-[#666] bg-[#252526] rounded px-3 py-2">
+          音乐生成成功
         </div>
       )}
 
@@ -1127,9 +1150,424 @@ function VoiceDesignPanel({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Music Generation Panel                                             */
+/* ------------------------------------------------------------------ */
+function MusicGenerationPanel({
+  config,
+  provider,
+}: {
+  config: ReturnType<typeof useAudioProvider>['config']
+  provider: ReturnType<typeof useAudioProvider>['provider']
+}) {
+  const [model, setModel] = useState('music-2.6')
+  const [prompt, setPrompt] = useState('')
+  const [lyrics, setLyrics] = useState('')
+  const [isInstrumental, setIsInstrumental] = useState(false)
+  const [lyricsOptimizer, setLyricsOptimizer] = useState(false)
+  const [aigcWatermark, setAigcWatermark] = useState(false)
+  const [format, setFormat] = useState<MusicFormat>('mp3')
+  const [sampleRate, setSampleRate] = useState(44100)
+  const [bitrate, setBitrate] = useState(256000)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [error, setError] = useState('')
+
+  // Reference audio for music-cover
+  const [refFile, setRefFile] = useState<File | null>(null)
+  const [refDragOver, setRefDragOver] = useState(false)
+  const refFileInputRef = useRef<HTMLInputElement>(null)
+
+  const addTask = useAudioStore((s) => s.addTask)
+
+  const isCoverModel = model.startsWith('music-cover')
+
+  useEffect(() => {
+    if (config?.categoryModels?.music) {
+      setModel(config.categoryModels.music)
+    }
+  }, [config?.categoryModels?.music])
+
+  const validate = (): string | null => {
+    const p = prompt.trim()
+    const l = lyrics.trim()
+
+    if (isCoverModel) {
+      if (p.length > 0 && p.length < 10) return '翻唱风格描述至少 10 个字符'
+      if (!p && !refFile) return 'music-cover 模式需要参考音频和风格描述'
+      if (!refFile) return '请上传参考音频（翻唱源音频）'
+      if (l.length > 0 && l.length < 10) return '歌词至少 10 个字符'
+    } else {
+      if (!isInstrumental && !l) return '非纯音乐模式需要歌词'
+      if (l.length > 3500) return '歌词最多 3500 字符'
+      if (!p && isInstrumental) return '请输入音乐描述'
+    }
+    if (p.length > 2000) return '音乐描述最多 2000 字符'
+    return null
+  }
+
+  const handleRefDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setRefDragOver(false)
+    const dropped = e.dataTransfer.files[0]
+    if (dropped) void validateAndSetRefFile(dropped)
+  }
+
+  async function validateAndSetRefFile(f: File) {
+    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
+    if (!['.mp3', '.wav', '.flac'].includes(ext)) {
+      setError('文件格式不支持，请上传 mp3、wav 或 flac 格式')
+      return
+    }
+    if (f.size > 50 * 1024 * 1024) {
+      setError('文件大小超过 50MB 限制')
+      return
+    }
+    setRefFile(f)
+    setError('')
+  }
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        // Strip data:audio/...;base64, prefix
+        const base64 = result.slice(result.indexOf(',') + 1)
+        resolve(base64)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+  const handleGenerate = async () => {
+    if (!provider || !config) {
+      setError('未配置音乐生成供应商')
+      return
+    }
+
+    const validationError = validate()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
+    if (!provider.generateMusic) {
+      setError('当前供应商不支持音乐生成')
+      return
+    }
+
+    setIsGenerating(true)
+    setError('')
+
+    try {
+      let refAudioBase64: string | undefined
+      if (isCoverModel && refFile) {
+        refAudioBase64 = await fileToBase64(refFile)
+      }
+
+      const result = await provider.generateMusic({
+        model,
+        prompt: prompt.trim(),
+        lyrics: lyrics.trim() || undefined,
+        audioSetting: {
+          sample_rate: sampleRate,
+          bitrate,
+          format,
+        },
+        aigcWatermark,
+        lyricsOptimizer,
+        isInstrumental,
+        referenceAudioBase64: refAudioBase64,
+      })
+
+      addTask({
+        taskId: result.taskId,
+        providerId: config.id,
+        type: 'music',
+        status: 'Success',
+        text: prompt.trim() || lyrics.trim().slice(0, 50) || '音乐生成',
+        model,
+        voiceId: '',
+        audioBase64: result.audioBase64,
+        audioFormat: format,
+      })
+
+      setPrompt('')
+      setLyrics('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '生成失败')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Provider Info */}
+        <div className="flex items-center gap-2 text-xs text-[#666]">
+          <Disc3 size={14} />
+          <span>供应商: {config?.name || '未配置'}</span>
+          {config?.categoryModels?.music && (
+            <span className="text-[#4a9eff]">模型: {config.categoryModels.music}</span>
+          )}
+        </div>
+
+        {/* Model Selection */}
+        <div>
+          <label className="block text-[#858585] text-xs mb-1.5">模型</label>
+          <select
+            value={model}
+            onChange={(e) => {
+              const newModel = e.target.value
+              setModel(newModel)
+              // Reset cover-specific state when switching away from cover
+              if (!newModel.startsWith('music-cover')) {
+                setRefFile(null)
+              }
+              if (!newModel.startsWith('music-2.6')) {
+                setIsInstrumental(false)
+                setLyricsOptimizer(false)
+              }
+            }}
+            className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+          >
+            {musicModelOptions.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-[#555] mt-1">
+            {isCoverModel
+              ? '基于参考音频生成翻唱版本'
+              : '根据文本描述生成音乐'}
+          </p>
+        </div>
+
+        {/* Reference Audio for music-cover */}
+        {isCoverModel && (
+          <div>
+            <label className="block text-[#858585] text-xs mb-1.5">参考音频（翻唱源）</label>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                setRefDragOver(true)
+              }}
+              onDragLeave={() => setRefDragOver(false)}
+              onDrop={handleRefDrop}
+              onClick={() => refFileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+                refDragOver
+                  ? 'border-[#4a9eff] bg-[#4a9eff]/5'
+                  : 'border-[#3c3c3c] hover:border-[#555] bg-[#1e1e1e]'
+              }`}
+            >
+              <input
+                ref={refFileInputRef}
+                type="file"
+                accept=".mp3,.wav,.flac"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void validateAndSetRefFile(f)
+                }}
+                className="hidden"
+              />
+              {refFile ? (
+                <div className="flex items-center justify-center gap-2 text-sm text-[#ccc]">
+                  <FileAudio size={18} className="text-[#4a9eff]" />
+                  <span>{refFile.name}</span>
+                  <span className="text-[#666]">({(refFile.size / 1024 / 1024).toFixed(1)} MB)</span>
+                </div>
+              ) : (
+                <>
+                  <Upload size={20} className="mx-auto mb-1 text-[#555]" />
+                  <p className="text-sm text-[#999]">拖拽音频文件到此处，或点击选择</p>
+                  <p className="text-[10px] text-[#555] mt-1">mp3 / wav / flac，6秒 - 6分钟，不超过 50MB</p>
+                </>
+              )}
+            </div>
+            {refFile && (
+              <button
+                onClick={() => {
+                  setRefFile(null)
+                  if (refFileInputRef.current) refFileInputRef.current.value = ''
+                }}
+                className="text-[10px] text-[#666] hover:text-red-400 mt-1 cursor-pointer"
+              >
+                清除文件
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Music Description */}
+        <div>
+          <label className="block text-[#858585] text-xs mb-1.5">
+            {isCoverModel ? '目标翻唱风格' : '音乐描述'}
+          </label>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder={
+              isCoverModel
+                ? '描述目标翻唱风格，例如：流行抒情风格...'
+                : '描述音乐风格、情绪和场景，例如：流行音乐, 难过, 适合在下雨的晚上...'
+            }
+            rows={2}
+            className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] placeholder-[#666] focus:outline-none focus:border-[#4a9eff] resize-none"
+          />
+          <div className="flex justify-between text-[10px] text-[#555] mt-1">
+            <span>{prompt.trim().length} 字符</span>
+            <span>
+              {isCoverModel ? '10-300 字符' : isInstrumental ? '1-2000 字符' : '0-2000 字符'}
+            </span>
+          </div>
+        </div>
+
+        {/* Lyrics */}
+        <div>
+          <label className="block text-[#858585] text-xs mb-1.5">
+            歌词
+            {!isInstrumental && !isCoverModel && (
+              <span className="text-red-400 ml-1">*</span>
+            )}
+            {(isInstrumental || isCoverModel) && (
+              <span className="text-[#666] ml-1">（可选）</span>
+            )}
+          </label>
+          <textarea
+            value={lyrics}
+            onChange={(e) => setLyrics(e.target.value)}
+            placeholder="输入歌词，使用 [Verse]、[Chorus] 等标签分段..."
+            rows={5}
+            className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2 text-sm text-[#ccc] placeholder-[#666] focus:outline-none focus:border-[#4a9eff] resize-none"
+          />
+          <div className="flex justify-between text-[10px] text-[#555] mt-1">
+            <span>{lyrics.trim().length} 字符</span>
+            <span>
+              {isCoverModel ? '10-1000 字符' : '最多 3500 字符'}
+            </span>
+          </div>
+        </div>
+
+        {/* Toggles */}
+        {!isCoverModel && (
+          <div className="flex items-center gap-4 flex-wrap">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isInstrumental}
+                onChange={(e) => setIsInstrumental(e.target.checked)}
+                className="accent-[#4a9eff]"
+              />
+              <span className="text-xs text-[#666]">纯音乐（无人声）</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={lyricsOptimizer}
+                onChange={(e) => setLyricsOptimizer(e.target.checked)}
+                className="accent-[#4a9eff]"
+              />
+              <span className="text-xs text-[#666]">根据描述自动生成歌词</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aigcWatermark}
+                onChange={(e) => setAigcWatermark(e.target.checked)}
+                className="accent-[#4a9eff]"
+              />
+              <span className="text-xs text-[#666]">添加 AIGC 水印</span>
+            </label>
+          </div>
+        )}
+
+        {/* Advanced: Audio Settings */}
+        <div className="border border-[#3c3c3c] rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs text-[#858585] hover:bg-[#2a2a2a] cursor-pointer"
+          >
+            <span className="flex items-center gap-1">
+              <SlidersHorizontal size={12} />
+              音频格式
+            </span>
+            {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          {showAdvanced && (
+            <div className="px-3 pb-3 space-y-3 border-t border-[#3c3c3c]">
+              <div className="grid grid-cols-3 gap-3 pt-3">
+                <div>
+                  <label className="block text-[#666] text-[10px] mb-1">格式</label>
+                  <select
+                    value={format}
+                    onChange={(e) => setFormat(e.target.value as MusicFormat)}
+                    className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+                  >
+                    {musicFormatOptions.map((f) => (
+                      <option key={f} value={f}>
+                        {f.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[#666] text-[10px] mb-1">采样率</label>
+                  <select
+                    value={sampleRate}
+                    onChange={(e) => setSampleRate(Number(e.target.value))}
+                    className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+                  >
+                    {musicSampleRateOptions.map((r) => (
+                      <option key={r} value={r}>
+                        {r}Hz
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[#666] text-[10px] mb-1">比特率</label>
+                  <select
+                    value={bitrate}
+                    onChange={(e) => setBitrate(Number(e.target.value))}
+                    className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1.5 text-xs text-[#ccc] focus:outline-none focus:border-[#4a9eff]"
+                  >
+                    {musicBitrateOptions.map((b) => (
+                      <option key={b} value={b}>
+                        {b / 1000}kbps
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {error && <ErrorBar message={error} />}
+      </div>
+
+      <div className="p-4 border-t border-[#3c3c3c]">
+        <SubmitButton
+          loading={isGenerating}
+          disabled={isGenerating || !provider}
+          onClick={handleGenerate}
+          icon={Disc3}
+          loadingLabel="生成中..."
+          label="生成音乐"
+        />
+        {!provider && <NoProviderHint />}
+      </div>
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
-type AudioTab = 'tts' | 'voice_clone' | 'voice_design'
+type AudioTab = 'tts' | 'voice_clone' | 'voice_design' | 'music'
 
 export function AudioWorkspace() {
   const [activeTab, setActiveTab] = useState<AudioTab>('tts')
@@ -1230,6 +1668,7 @@ export function AudioWorkspace() {
     { id: 'tts', label: '语音合成' },
     { id: 'voice_clone', label: '音色快速复刻' },
     { id: 'voice_design', label: '音色设计' },
+    { id: 'music', label: '音乐生成' },
   ]
 
   return (
@@ -1263,6 +1702,9 @@ export function AudioWorkspace() {
           )}
           {activeTab === 'voice_design' && (
             <VoiceDesignPanel config={config} provider={provider} />
+          )}
+          {activeTab === 'music' && (
+            <MusicGenerationPanel config={config} provider={provider} />
           )}
         </div>
 
