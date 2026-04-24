@@ -9,7 +9,10 @@ import { CATEGORY_PROVIDER_MAP, CATEGORY_LABELS } from '@/lib/providers'
 
 export function ProviderSettingsSection() {
   const { providers, activeProviders, setActiveProvider } = useSettingsStore()
-  const [settingsProviderId, setSettingsProviderId] = useState<ProviderType | null>(null)
+  const [settingsProvider, setSettingsProvider] = useState<{
+    providerId: ProviderType
+    category: ProviderCategory
+  } | null>(null)
   const [expandedCategories, setExpandedCategories] = useState<Set<ProviderCategory>>(
     new Set(['text'])
   )
@@ -25,9 +28,9 @@ export function ProviderSettingsSection() {
     })
   }
 
-  const handleContextMenu = (e: React.MouseEvent, providerId: ProviderType) => {
+  const handleContextMenu = (e: React.MouseEvent, providerId: ProviderType, category: ProviderCategory) => {
     e.preventDefault()
-    setSettingsProviderId(providerId)
+    setSettingsProvider({ providerId, category })
   }
 
   return (
@@ -58,11 +61,11 @@ export function ProviderSettingsSection() {
                       <div
                         key={providerId}
                         className="group relative"
-                        onContextMenu={(e) => handleContextMenu(e, providerId)}
+                        onContextMenu={(e) => handleContextMenu(e, providerId, category)}
                       >
                         <button
                           onClick={() => setActiveProvider(category, providerId)}
-                          onDoubleClick={() => setSettingsProviderId(providerId)}
+                          onDoubleClick={() => setSettingsProvider({ providerId, category })}
                           className={cn(
                             'w-full text-left p-3 rounded-xl border transition-all duration-200 ease-out cursor-pointer',
                             isActive
@@ -103,7 +106,7 @@ export function ProviderSettingsSection() {
                                 )}
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  setSettingsProviderId(providerId)
+                                  setSettingsProvider({ providerId, category })
                                 }}
                               />
                             </div>
@@ -122,10 +125,11 @@ export function ProviderSettingsSection() {
         </p>
       </div>
 
-      {settingsProviderId && (
+      {settingsProvider && (
         <ProviderSettingsModal
-          providerId={settingsProviderId}
-          onClose={() => setSettingsProviderId(null)}
+          providerId={settingsProvider.providerId}
+          category={settingsProvider.category}
+          onClose={() => setSettingsProvider(null)}
         />
       )}
     </>

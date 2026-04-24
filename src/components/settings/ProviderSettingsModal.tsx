@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { useSettingsStore } from '@/lib/store'
-import type { ProviderType } from '@/lib/providers'
+import type { ProviderType, ProviderCategory } from '@/lib/providers'
 import { LMStudioPanel } from './provider-panels/LMStudioPanel'
 import { OpenAIPanel } from './provider-panels/OpenAIPanel'
 import { AnthropicPanel } from './provider-panels/AnthropicPanel'
@@ -10,6 +10,7 @@ import { MiniMaxPanel } from './provider-panels/MiniMaxPanel'
 
 interface ProviderSettingsModalProps {
   providerId: ProviderType
+  category?: ProviderCategory
   onClose: () => void
 }
 
@@ -22,10 +23,9 @@ const panelMap: Record<string, React.FC<{
   openai: OpenAIPanel,
   anthropic: AnthropicPanel,
   custom: CustomPanel,
-  minimax: MiniMaxPanel,
 }
 
-export function ProviderSettingsModal({ providerId, onClose }: ProviderSettingsModalProps) {
+export function ProviderSettingsModal({ providerId, category, onClose }: ProviderSettingsModalProps) {
   const { providers, updateProvider, decryptApiKeys } = useSettingsStore()
   const [keysReady, setKeysReady] = useState(false)
 
@@ -38,7 +38,6 @@ export function ProviderSettingsModal({ providerId, onClose }: ProviderSettingsM
   if (!provider) return null
 
   const Panel = panelMap[providerId]
-  if (!Panel) return null
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -60,7 +59,17 @@ export function ProviderSettingsModal({ providerId, onClose }: ProviderSettingsM
             <div className="text-[#666] text-sm text-center py-8">
               正在解密敏感数据...
             </div>
-          ) : (
+          ) : providerId === 'minimax' ? (
+            <MiniMaxPanel
+              config={provider}
+              category={category}
+              onSave={(updates) => {
+                updateProvider(providerId, updates)
+                onClose()
+              }}
+              onClose={onClose}
+            />
+          ) : Panel ? (
             <Panel
               config={provider}
               onSave={(updates) => {
@@ -69,7 +78,7 @@ export function ProviderSettingsModal({ providerId, onClose }: ProviderSettingsM
               }}
               onClose={onClose}
             />
-          )}
+          ) : null}
         </div>
       </div>
     </div>
