@@ -65,7 +65,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       updateProvider: async (id: ProviderType, updates: Partial<ProviderConfig>) => {
         let apiKey = updates.apiKey ?? ''
-        if (apiKey) {
+        if (apiKey && typeof apiKey === 'string') {
           const encrypted = await encrypt(apiKey)
           if (encrypted) {
             apiKey = encrypted as unknown as string
