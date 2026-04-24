@@ -82,7 +82,9 @@ export function ProviderSettingsSection() {
                             <div className="flex flex-col gap-0.5">
                               <span className="text-sm font-medium">{provider.name}</span>
                               <span className="text-[#64748b] text-xs">
-                                {provider.model || '未配置模型'}
+                                {provider.categoryModels?.[category]
+                                  ? `${provider.categoryModels[category]}`
+                                  : provider.model || '未配置模型'}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
