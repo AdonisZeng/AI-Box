@@ -144,14 +144,15 @@ export const useSettingsStore = create<SettingsState>()(
           : currentState.providers
 
         // Migrate old single activeProvider to new activeProviders
+        // New activeProviders takes precedence; old field is dropped
         let activeProviders = currentState.activeProviders
-        if (persisted.activeProvider && typeof persisted.activeProvider === 'string') {
+        if (persisted.activeProviders) {
+          activeProviders = { ...currentState.activeProviders, ...persisted.activeProviders }
+        } else if (persisted.activeProvider && typeof persisted.activeProvider === 'string') {
           activeProviders = {
             ...currentState.activeProviders,
             text: persisted.activeProvider as ProviderType,
           }
-        } else if (persisted.activeProviders) {
-          activeProviders = { ...currentState.activeProviders, ...persisted.activeProviders }
         }
 
         // Build decrypted keys cache from persisted encrypted values
@@ -165,9 +166,12 @@ export const useSettingsStore = create<SettingsState>()(
           }
         }
 
+        // Exclude stale activeProvider field from returned state
+        const { activeProvider: _, ...restPersisted } = persisted
+
         return {
           ...currentState,
-          ...persisted,
+          ...restPersisted,
           providers: mergedProviders,
           activeProviders,
           _decryptedKeys: {
