@@ -11,7 +11,6 @@ export interface ThinkingParseResult {
 }
 
 export function parseThinking(content: string): ThinkingParseResult {
-  // First try standard markdown thinking tags
   const thinkRegex = /<think>([\s\S]*?)<\/think>/gi
   const parts = content.split(thinkRegex)
 
@@ -21,7 +20,6 @@ export function parseThinking(content: string): ThinkingParseResult {
     return { thinking: thinking || null, response }
   }
 
-  // Handle <thinking_start> and <thinking_end> markers (Qwen3 format)
   const qwenThinkRegex = /<thinking_start>([\s\S]*?)<thinking_end>/gi
   const qwenParts = content.split(qwenThinkRegex)
 
@@ -32,4 +30,16 @@ export function parseThinking(content: string): ThinkingParseResult {
   }
 
   return { thinking: null, response: content }
+}
+
+export function fileToBase64(file: File, stripPrefix = true): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      resolve(stripPrefix ? result.slice(result.indexOf(',') + 1) : result)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }

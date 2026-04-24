@@ -271,6 +271,10 @@ export class MiniMaxAudioProvider implements AudioProvider {
       body.audio_base64 = params.referenceAudioBase64
     }
 
+    if (params.coverFeatureId) {
+      body.cover_feature_id = params.coverFeatureId
+    }
+
     const data = await this.request<{
       trace_id: string
       data?: { audio?: string; status?: number }
@@ -291,6 +295,22 @@ export class MiniMaxAudioProvider implements AudioProvider {
 
     const audioBase64 = this.hexToBase64(hexAudio)
     return { taskId: data.trace_id, audioBase64 }
+  }
+
+  async preprocessCoverAudio(audioBase64: string): Promise<{ coverFeatureId: string }> {
+    const data = await this.request<{
+      cover_feature_id?: string
+      base_resp?: { status_msg: string }
+    }>('POST', '/v1/music_cover_preprocess', {
+      audio_base64: audioBase64,
+    })
+
+    const coverFeatureId = data.cover_feature_id
+    if (!coverFeatureId) {
+      throw new Error('未返回 cover_feature_id')
+    }
+
+    return { coverFeatureId }
   }
 
   private hexToBase64(hex: string): string {

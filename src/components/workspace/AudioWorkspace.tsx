@@ -20,6 +20,7 @@ import {
 import { useSettingsStore } from '@/lib/store'
 import { useAudioStore } from '@/lib/store/audio'
 import { createAudioProvider, getAudioProviderConfig } from '@/lib/audio/service'
+import { fileToBase64 } from '@/lib/utils'
 import { isAsyncText } from '@/lib/audio'
 import type { AudioTask, AudioTaskStatus, AudioTaskType } from '@/lib/audio/types'
 
@@ -351,6 +352,11 @@ function TTSPanel({
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState('')
 
+  const [useRefAudio, setUseRefAudio] = useState(false)
+  const [refFile, setRefFile] = useState<File | null>(null)
+  const [refDragOver, setRefDragOver] = useState(false)
+  const refFileInputRef = useRef<HTMLInputElement>(null)
+
   const addTask = useAudioStore((s) => s.addTask)
 
   useEffect(() => {
@@ -369,50 +375,142 @@ function TTSPanel({
       return
     }
 
+    if (useRefAudio) {
+      if (!refFile) {
+        setError('请上传参考音频')
+        return
+      }
+      if (!provider.uploadFile || !provider.cloneVoice) {
+        setError('当前供应商不支持参考音频合成')
+        return
+      }
+    }
+
     setIsGenerating(true)
     setError('')
 
     try {
-      const result = await provider.textToSpeech({
-        text: text.trim(),
-        model,
-        voiceSetting: {
-          voice_id: voiceId,
-          speed,
-          vol,
-          pitch,
-          emotion: emotion || undefined,
-        },
-        audioSetting: {
-          sample_rate: sampleRate,
-          bitrate,
-          format,
-          channel,
-        },
-      })
+      if (useRefAudio && refFile) {
+        const uploadResult = await provider.uploadFile!(refFile, 'voice_clone')
+        const generatedVoiceId = `ref_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        const voiceIdErr = getVoiceIdError(generatedVoiceId)
+        if (voiceIdErr) {
+          throw new Error(`生成的音色ID无效: ${voiceIdErr}`)
+        }
 
-      const isAsync = !result.audioBase64
+        const result = await provider.cloneVoice!({
+          fileId: uploadResult.fileId,
+          voiceId: generatedVoiceId,
+          text: text.trim(),
+          model,
+        })
 
-      addTask({
-        taskId: result.taskId,
-        providerId: config.id,
-        type: 'tts',
-        status: isAsync ? 'Preparing' : 'Success',
-        text: text.trim(),
-        model,
-        voiceId,
-        audioFormat: format,
-        audioBase64: result.audioBase64,
-      })
+        addTask({
+          taskId: generatedVoiceId,
+          providerId: config.id,
+          type: 'voice_clone',
+          status: 'Success',
+          text: text.trim(),
+          model,
+          voiceId: generatedVoiceId,
+          audioBase64: result.demoAudio,
+          audioFormat: 'mp3',
+          fileId: uploadResult.fileId,
+        })
 
-      if (!isAsync) {
-        setText('')
+        setRefFile(null)
+        if (refFileInputRef.current) refFileInputRef.current.value = ''
+      } else {
+        const result = await provider.textToSpeech({
+          text: text.trim(),
+          model,
+          voiceSetting: {
+            voice_id: voiceId,
+            speed,
+            vol,
+            pitch,
+            emotion: emotion || undefined,
+          },
+          audioSetting: {
+            sample_rate: sampleRate,
+            bitrate,
+            format,
+            channel,
+          },
+        })
+
+        const isAsync = !result.audioBase64
+
+        addTask({
+          taskId: result.taskId,
+          providerId: config.id,
+          type: 'tts',
+          status: isAsync ? 'Preparing' : 'Success',
+          text: text.trim(),
+          model,
+          voiceId,
+          audioFormat: format,
+          audioBase64: result.audioBase64,
+        })
+
+        if (!isAsync) {
+          setText('')
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : '合成失败')
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleRefDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setRefDragOver(false)
+    const dropped = e.dataTransfer.files[0]
+    if (dropped) void validateAndSetRefFile(dropped)
+  }
+
+  async function validateAndSetRefFile(f: File) {
+    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
+    if (!['.mp3', '.m4a', '.wav'].includes(ext)) {
+      setError('文件格式不支持，请上传 mp3、m4a 或 wav 格式')
+      return
+    }
+    if (f.size > 20 * 1024 * 1024) {
+      setError('文件大小超过 20MB 限制')
+      return
+    }
+
+    try {
+      const header = new Uint8Array(await f.slice(0, 8).arrayBuffer())
+      const isWav =
+        header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46
+      const isMp3 =
+        (header[0] === 0x49 && header[1] === 0x44 && header[2] === 0x33) ||
+        (header[0] === 0xff && (header[1] & 0xe0) === 0xe0)
+      const isM4a =
+        header[4] === 0x66 && header[5] === 0x74 && header[6] === 0x79 && header[7] === 0x70
+
+      if (ext === '.wav' && !isWav) {
+        setError('文件头不匹配 wav 格式')
+        return
+      }
+      if (ext === '.mp3' && !isMp3) {
+        setError('文件头不匹配 mp3 格式')
+        return
+      }
+      if (ext === '.m4a' && !isM4a) {
+        setError('文件头不匹配 m4a 格式')
+        return
+      }
+    } catch {
+      setError('无法读取文件，请重试')
+      return
+    }
+
+    setRefFile(f)
+    setError('')
   }
 
   const handleToggleCustomVoice = (checked: boolean) => {
@@ -513,6 +611,77 @@ function TTSPanel({
             />
             <span className="text-[10px] text-[#666]">使用自定义音色 ID</span>
           </label>
+        </div>
+
+        {/* Reference Audio for TTS */}
+        <div>
+          <label className="flex items-center gap-1.5 cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              checked={useRefAudio}
+              onChange={(e) => {
+                setUseRefAudio(e.target.checked)
+                if (!e.target.checked) {
+                  setRefFile(null)
+                  if (refFileInputRef.current) refFileInputRef.current.value = ''
+                }
+              }}
+              className="accent-[#4a9eff]"
+            />
+            <span className="text-xs text-[#666]">使用参考音频合成（自动复刻音色并朗读）</span>
+          </label>
+
+          {useRefAudio && (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                setRefDragOver(true)
+              }}
+              onDragLeave={() => setRefDragOver(false)}
+              onDrop={handleRefDrop}
+              onClick={() => refFileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-colors ${
+                refDragOver
+                  ? 'border-[#4a9eff] bg-[#4a9eff]/5'
+                  : 'border-[#3c3c3c] hover:border-[#555] bg-[#1e1e1e]'
+              }`}
+            >
+              <input
+                ref={refFileInputRef}
+                type="file"
+                accept=".mp3,.m4a,.wav"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void validateAndSetRefFile(f)
+                }}
+                className="hidden"
+              />
+              {refFile ? (
+                <div className="flex items-center justify-center gap-2 text-sm text-[#ccc]">
+                  <FileAudio size={16} className="text-[#4a9eff]" />
+                  <span>{refFile.name}</span>
+                  <span className="text-[#666]">({(refFile.size / 1024 / 1024).toFixed(1)} MB)</span>
+                </div>
+              ) : (
+                <>
+                  <Upload size={18} className="mx-auto mb-1 text-[#555]" />
+                  <p className="text-xs text-[#999]">拖拽音频文件到此处，或点击选择</p>
+                  <p className="text-[10px] text-[#555] mt-0.5">mp3 / m4a / wav，10秒 - 5分钟，不超过 20MB</p>
+                </>
+              )}
+            </div>
+          )}
+          {useRefAudio && refFile && (
+            <button
+              onClick={() => {
+                setRefFile(null)
+                if (refFileInputRef.current) refFileInputRef.current.value = ''
+              }}
+              className="text-[10px] text-[#666] hover:text-red-400 mt-1 cursor-pointer"
+            >
+              清除文件
+            </button>
+          )}
         </div>
 
         {/* Speed Slider */}
@@ -669,11 +838,11 @@ function TTSPanel({
       <div className="p-4 border-t border-[#3c3c3c]">
         <SubmitButton
           loading={isGenerating}
-          disabled={isGenerating || !provider}
+          disabled={isGenerating || !provider || (useRefAudio && !refFile)}
           onClick={handleGenerate}
           icon={Music}
-          loadingLabel="合成中..."
-          label="生成语音"
+          loadingLabel={useRefAudio ? '复刻并合成中...' : '合成中...'}
+          label={useRefAudio ? '复刻音色并生成语音' : '生成语音'}
         />
         {!provider && <NoProviderHint />}
       </div>
@@ -1177,6 +1346,9 @@ function MusicGenerationPanel({
   const [refDragOver, setRefDragOver] = useState(false)
   const refFileInputRef = useRef<HTMLInputElement>(null)
 
+  const [coverFeatureId, setCoverFeatureId] = useState('')
+  const [isPreprocessing, setIsPreprocessing] = useState(false)
+
   const addTask = useAudioStore((s) => s.addTask)
 
   const isCoverModel = model.startsWith('music-cover')
@@ -1193,8 +1365,10 @@ function MusicGenerationPanel({
 
     if (isCoverModel) {
       if (p.length > 0 && p.length < 10) return '翻唱风格描述至少 10 个字符'
-      if (!p && !refFile) return 'music-cover 模式需要参考音频和风格描述'
-      if (!refFile) return '请上传参考音频（翻唱源音频）'
+      // When using coverFeatureId, no need for refFile
+      const hasRef = !!refFile || !!coverFeatureId
+      if (!p && !hasRef) return 'music-cover 模式需要参考音频和风格描述'
+      if (!hasRef) return '请上传参考音频或使用特征ID（两步翻唱）'
       if (l.length > 0 && l.length < 10) return '歌词至少 10 个字符'
     } else {
       if (!isInstrumental && !l) return '非纯音乐模式需要歌词'
@@ -1226,18 +1400,27 @@ function MusicGenerationPanel({
     setError('')
   }
 
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const result = reader.result as string
-        // Strip data:audio/...;base64, prefix
-        const base64 = result.slice(result.indexOf(',') + 1)
-        resolve(base64)
-      }
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
+  const handlePreprocess = async () => {
+    if (!provider || !provider.preprocessCoverAudio) {
+      setError('当前供应商不支持翻唱预处理')
+      return
+    }
+    if (!refFile) {
+      setError('请先上传参考音频')
+      return
+    }
+    setIsPreprocessing(true)
+    setError('')
+    try {
+      const base64 = await fileToBase64(refFile)
+      const result = await provider.preprocessCoverAudio(base64)
+      setCoverFeatureId(result.coverFeatureId)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '预处理失败')
+    } finally {
+      setIsPreprocessing(false)
+    }
+  }
 
   const handleGenerate = async () => {
     if (!provider || !config) {
@@ -1261,7 +1444,7 @@ function MusicGenerationPanel({
 
     try {
       let refAudioBase64: string | undefined
-      if (isCoverModel && refFile) {
+      if (isCoverModel && refFile && !coverFeatureId) {
         refAudioBase64 = await fileToBase64(refFile)
       }
 
@@ -1278,6 +1461,7 @@ function MusicGenerationPanel({
         lyricsOptimizer,
         isInstrumental,
         referenceAudioBase64: refAudioBase64,
+        coverFeatureId: coverFeatureId || undefined,
       })
 
       addTask({
@@ -1324,6 +1508,7 @@ function MusicGenerationPanel({
               // Reset cover-specific state when switching away from cover
               if (!newModel.startsWith('music-cover')) {
                 setRefFile(null)
+                setCoverFeatureId('')
               }
               if (!newModel.startsWith('music-2.6')) {
                 setIsInstrumental(false)
@@ -1391,12 +1576,63 @@ function MusicGenerationPanel({
               <button
                 onClick={() => {
                   setRefFile(null)
+                  setCoverFeatureId('')
                   if (refFileInputRef.current) refFileInputRef.current.value = ''
                 }}
                 className="text-[10px] text-[#666] hover:text-red-400 mt-1 cursor-pointer"
               >
                 清除文件
               </button>
+            )}
+
+            {/* Preprocess for two-step cover */}
+            {refFile && (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handlePreprocess}
+                    disabled={isPreprocessing}
+                    className="px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333] border border-[#3c3c3c] rounded text-xs text-[#ccc] disabled:opacity-50 cursor-pointer transition-colors"
+                  >
+                    {isPreprocessing ? '预处理中...' : '提取特征ID（两步翻唱）'}
+                  </button>
+                  <span className="text-[10px] text-[#666]">提取后可复用特征多次翻唱</span>
+                </div>
+
+                {coverFeatureId && (
+                  <div className="bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-[#858585]">特征 ID（已提取）</span>
+                      <button
+                        onClick={() => {
+                          setCoverFeatureId('')
+                          setRefFile(null)
+                          if (refFileInputRef.current) refFileInputRef.current.value = ''
+                        }}
+                        className="text-[10px] text-[#666] hover:text-red-400 cursor-pointer"
+                      >
+                        清除
+                      </button>
+                    </div>
+                    <p className="text-xs text-[#4a9eff] font-mono mt-0.5 break-all">{coverFeatureId}</p>
+                    <p className="text-[10px] text-[#555] mt-1">特征ID有效期24小时，可配合不同歌词多次生成翻唱</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Manual cover feature ID input */}
+            {!refFile && (
+              <div className="mt-2">
+                <label className="block text-[#858585] text-[10px] mb-1">或输入已有的特征 ID</label>
+                <input
+                  type="text"
+                  value={coverFeatureId}
+                  onChange={(e) => setCoverFeatureId(e.target.value)}
+                  placeholder="输入之前提取的 cover_feature_id..."
+                  className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-3 py-1.5 text-xs text-[#ccc] placeholder-[#666] focus:outline-none focus:border-[#4a9eff]"
+                />
+              </div>
             )}
           </div>
         )}
@@ -1552,7 +1788,7 @@ function MusicGenerationPanel({
       <div className="p-4 border-t border-[#3c3c3c]">
         <SubmitButton
           loading={isGenerating}
-          disabled={isGenerating || !provider}
+          disabled={isGenerating || isPreprocessing || !provider}
           onClick={handleGenerate}
           icon={Disc3}
           loadingLabel="生成中..."

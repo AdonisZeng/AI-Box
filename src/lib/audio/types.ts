@@ -79,6 +79,7 @@ export interface MusicGenerationParams {
   lyricsOptimizer?: boolean
   isInstrumental?: boolean
   referenceAudioBase64?: string
+  coverFeatureId?: string
 }
 
 export interface AudioProvider {
@@ -100,4 +101,8 @@ export interface AudioProvider {
   generateMusic?(
     params: MusicGenerationParams
   ): Promise<{ taskId: string; audioBase64: string }>
+
+  preprocessCoverAudio?(
+    audioBase64: string
+  ): Promise<{ coverFeatureId: string }>
 }
