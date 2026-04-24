@@ -73,9 +73,11 @@ export const openaiDefinition = {
     if (!config.enabled) {
       return 'OpenAI 当前已禁用，请先在设置中启用后再试。'
     }
-    return config.apiKey.trim() ? null : 'OpenAI 尚未配置 API Key，请先在设置中补充后再试。'
+    const key = typeof config.apiKey === 'string' ? config.apiKey : ''
+    return key.trim() ? null : 'OpenAI 尚未配置 API Key，请先在设置中补充后再试。'
   },
   createProvider(config: ProviderConfig): LLMProvider | null {
-    return new OpenAIProvider(config.apiKey.trim(), config.baseURL, config.model)
+    const key = typeof config.apiKey === 'string' ? config.apiKey : ''
+    return new OpenAIProvider(key.trim(), config.baseURL, config.model)
   },
 }

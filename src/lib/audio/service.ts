@@ -4,7 +4,7 @@ import { MiniMaxAudioProvider } from './providers/minimax'
 
 export function createAudioProvider(config: ProviderConfig): AudioProvider | null {
   if (!config.enabled) return null
-  if (!config.apiKey.trim()) return null
+  if (typeof config.apiKey !== 'string' || !config.apiKey.trim()) return null
 
   switch (config.id) {
     case 'minimax':

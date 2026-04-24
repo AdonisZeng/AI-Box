@@ -80,9 +80,15 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       setActiveProvider: (category: ProviderCategory, id: ProviderType) => {
-        set((state) => ({
-          activeProviders: { ...state.activeProviders, [category]: id },
-        }))
+        set((state) => {
+          const next = {
+            activeProviders: { ...state.activeProviders, [category]: id },
+            providers: state.providers.map((p) =>
+              p.id === id && !p.enabled ? { ...p, enabled: true } : p
+            ),
+          }
+          return next
+        })
       },
 
       setTheme: (theme: 'light' | 'dark') => {

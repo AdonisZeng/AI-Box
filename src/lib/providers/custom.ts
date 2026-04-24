@@ -230,9 +230,12 @@ export const customDefinition = {
     if (!config.enabled) {
       return '自定义 Provider 当前已禁用，请先在设置中启用后再试。'
     }
-    return config.baseURL.trim() ? null : '自定义 Provider 尚未配置基地址，请先在设置中补充后再试。'
+    const url = typeof config.baseURL === 'string' ? config.baseURL : ''
+    return url.trim() ? null : '自定义 Provider 尚未配置基地址，请先在设置中补充后再试。'
   },
   createProvider(config: ProviderConfig): LLMProvider | null {
-    return new CustomProvider(config.baseURL.trim(), config.apiType, config.apiKey.trim(), config.model)
+    const url = typeof config.baseURL === 'string' ? config.baseURL : ''
+    const key = typeof config.apiKey === 'string' ? config.apiKey : ''
+    return new CustomProvider(url.trim(), config.apiType, key.trim(), config.model)
   },
 }

@@ -12,7 +12,7 @@ export const minimaxDefinition = {
       apiKey: '',
       model: 'MiniMax-M2.7',
       apiType: 'anthropic',
-      enabled: false,
+      enabled: true,
       categoryModels: {
         text: 'MiniMax-M2.7',
         image: 'image-01',
@@ -26,13 +26,15 @@ export const minimaxDefinition = {
     if (!config.enabled) {
       return 'MiniMax 当前已禁用，请先在设置中启用后再试。'
     }
-    return config.apiKey.trim() ? null : 'MiniMax 尚未配置 API Key，请先在设置中补充后再试。'
+    const key = typeof config.apiKey === 'string' ? config.apiKey : ''
+    return key.trim() ? null : 'MiniMax 尚未配置 API Key，请先在设置中补充后再试。'
   },
   createProvider(config: ProviderConfig): LLMProvider | null {
+    const key = typeof config.apiKey === 'string' ? config.apiKey : ''
     return new CustomProvider(
-      config.baseURL.trim() || 'https://api.minimaxi.com/anthropic',
+      (typeof config.baseURL === 'string' ? config.baseURL : '').trim() || 'https://api.minimaxi.com/anthropic',
       'anthropic',
-      config.apiKey.trim(),
+      key.trim(),
       config.model
     )
   },
